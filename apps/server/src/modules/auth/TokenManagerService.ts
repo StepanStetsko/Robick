@@ -1,4 +1,4 @@
-import { AccountType } from "@prisma/client";
+import { AccountType } from "../../generated/prisma/client.js";
 import { AuthRepository } from "./AuthRepository.js";
 import { TwitchOAuthService } from "./TwitchOAuthService.js";
 import type { AuthAccountType } from "./auth.types.js";

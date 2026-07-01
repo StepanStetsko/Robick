@@ -2,7 +2,7 @@ import { AuthRepository } from "./AuthRepository.js";
 import { TokenManagerService } from "./TokenManagerService.js";
 import { TwitchOAuthService } from "./TwitchOAuthService.js";
 import { logger } from "../../core/logger/logger.js";
-import { AccountType } from "@prisma/client";
+import { AccountType } from "../../generated/prisma/client.js";
 import { twitchRealtimeHub } from "../twitch/realtime/twitch-realtime-hub.js";
 
 const TOKEN_REFRESH_CHECK_INTERVAL_MS = 60 * 1000;

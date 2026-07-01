@@ -1,4 +1,4 @@
-import { AccountType, Prisma } from "@prisma/client";
+import { AccountType, Prisma } from "../../generated/prisma/client.js";
 import { prisma } from "../../core/db/PrismaClient.js";
 
 export class AuthRepository {
