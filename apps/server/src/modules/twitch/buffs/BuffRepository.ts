@@ -3,11 +3,15 @@ import { Prisma } from "../../../generated/prisma/client.js";
 import type {
   ActiveBuff,
   BuffDefinition,
+  BuffSettings,
   PrismaClient,
 } from "../../../generated/prisma/client.js";
-import type {
-  CreateBuffDefinitionInput,
-  UpdateBuffDefinitionInput,
+import {
+  BUFF_SETTINGS_KEY,
+  defaultBuffMessages,
+  type CreateBuffDefinitionInput,
+  type UpdateBuffDefinitionInput,
+  type UpdateBuffSettingsInput,
 } from "./buff.types.js";
 
 export type CreateActiveBuffData = {
@@ -181,6 +185,45 @@ export class BuffRepository {
     await this.db.activeBuff.update({
       where: { id },
       data: { rollsRemaining },
+    });
+  }
+
+  // ----- Settings (curse command) -----
+
+  async getSettingsRow(): Promise<BuffSettings> {
+    const existing = await this.db.buffSettings.findUnique({
+      where: { key: BUFF_SETTINGS_KEY },
+    });
+
+    if (existing) {
+      return existing;
+    }
+
+    return this.db.buffSettings.create({
+      data: {
+        key: BUFF_SETTINGS_KEY,
+        messages: defaultBuffMessages as unknown as Prisma.InputJsonValue,
+      },
+    });
+  }
+
+  async updateSettings(input: UpdateBuffSettingsInput): Promise<BuffSettings> {
+    await this.getSettingsRow();
+
+    return this.db.buffSettings.update({
+      where: { key: BUFF_SETTINGS_KEY },
+      data: {
+        ...(input.curseCommand !== undefined
+          ? { curseCommand: input.curseCommand }
+          : {}),
+        ...(input.curseCooldownSec !== undefined
+          ? { curseCooldownSec: input.curseCooldownSec }
+          : {}),
+        ...(input.curseCost !== undefined ? { curseCost: input.curseCost } : {}),
+        ...(input.messages !== undefined
+          ? { messages: input.messages as unknown as Prisma.InputJsonValue }
+          : {}),
+      },
     });
   }
 }

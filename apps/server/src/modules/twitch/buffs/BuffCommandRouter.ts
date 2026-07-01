@@ -3,6 +3,9 @@ import type { TwitchChatService } from "../TwitchChatService.js";
 import type { TwitchChatMessageEvent } from "../twitch.types.js";
 import { RateLimitService } from "../guards/RateLimitService.js";
 import { EconomyService } from "../economy/EconomyService.js";
+import { PresenceLogService } from "../economy/PresenceLogService.js";
+import { EarningExclusionService } from "../economy/EarningExclusionService.js";
+import { ProtectionRepository } from "../steal/ProtectionRepository.js";
 import { BuffService } from "./BuffService.js";
 import type {
   BuffEffectType,
@@ -26,6 +29,9 @@ export class BuffCommandRouter {
     private readonly chatService: TwitchChatService,
     private readonly economyService: EconomyService,
     private readonly buffService: BuffService,
+    private readonly presenceLogService: PresenceLogService,
+    private readonly protectionRepository: ProtectionRepository,
+    private readonly earningExclusionService: EarningExclusionService,
   ) {}
 
   async handle(event: TwitchChatMessageEvent): Promise<boolean> {
@@ -48,7 +54,223 @@ export class BuffCommandRouter {
       return true;
     }
 
+    const buffSettings = await this.buffService.getSettings();
+
+    if (parsed.commandName === buffSettings.curseCommand) {
+      await this.handleCurse(event, viewer, settings);
+      return true;
+    }
+
     return false;
+  }
+
+  /**
+   * Cast a random debuff on someone else: `!прокляти` picks a random present
+   * viewer, `!прокляти @нік` targets a specific one. A shielded target is
+   * immune (like steal). Available to everyone; per-caster cooldown + cost.
+   */
+  private async handleCurse(
+    event: TwitchChatMessageEvent,
+    caster: BuffViewerInput,
+    economySettings: Settings,
+  ): Promise<void> {
+    const buffSettings = await this.buffService.getSettings();
+    const m = buffSettings.messages;
+    const casterName = this.getDisplayName(caster);
+
+    const mentioned = this.findMentionTarget(event);
+    const target = mentioned ?? (await this.pickRandomTarget(caster.twitchUserId));
+
+    if (!target) {
+      await this.sendCurse(m.noTarget, { casterName }, event);
+      return;
+    }
+
+    if (target.twitchUserId === caster.twitchUserId) {
+      await this.sendCurse(m.self, { casterName }, event);
+      return;
+    }
+
+    // The streamer and the bot cannot be cursed.
+    if (await this.earningExclusionService.isExcluded(target.twitchUserId)) {
+      await this.sendCurse(m.noTarget, { casterName }, event);
+      return;
+    }
+
+    // Shield immunity — same protection viewers buy against steal.
+    const protection = await this.protectionRepository.getActive(
+      target.twitchUserId,
+      new Date(),
+    );
+
+    if (protection) {
+      await this.sendCurse(
+        m.shielded,
+        { casterName, victimName: this.getDisplayName(target) },
+        event,
+      );
+      return;
+    }
+
+    if (!(await this.buffService.hasEnabledDebuffs())) {
+      await this.sendCurse(m.noDebuffs, { casterName }, event);
+      return;
+    }
+
+    if (buffSettings.curseCost > 0) {
+      const balance = await this.economyService.getBalance(caster.twitchUserId);
+      if (balance < buffSettings.curseCost) {
+        await this.sendCurse(
+          m.insufficient,
+          {
+            casterName,
+            cost: buffSettings.curseCost,
+            balance,
+            unit: economySettings.unit,
+          },
+          event,
+        );
+        return;
+      }
+    }
+
+    const cooldownMs = buffSettings.curseCooldownSec * 1000;
+    if (cooldownMs > 0) {
+      const cooldown = this.rateLimitService.isAllowed(
+        `buff:curse:${caster.twitchUserId}`,
+        cooldownMs,
+      );
+
+      if (!cooldown.allowed) {
+        await this.sendCurse(
+          m.cooldown,
+          {
+            casterName,
+            secondsLeft: Math.ceil(cooldown.retryAfterMs / 1000),
+          },
+          event,
+        );
+        return;
+      }
+    }
+
+    try {
+      if (buffSettings.curseCost > 0) {
+        await this.economyService.spend(
+          caster.twitchUserId,
+          buffSettings.curseCost,
+        );
+      }
+
+      const applied = await this.buffService.applyRandomDebuff(target);
+
+      if (!applied) {
+        await this.sendCurse(m.noDebuffs, { casterName }, event);
+        return;
+      }
+
+      await this.sendCurse(
+        m.cursed,
+        {
+          casterName,
+          victimName: this.getDisplayName(target),
+          title: applied.definition.title,
+          effect: this.describeEffect(
+            applied.definition.effectType,
+            applied.definition.magnitude,
+          ),
+        },
+        event,
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message === "INSUFFICIENT_FUNDS") {
+        const balance = await this.economyService.getBalance(
+          caster.twitchUserId,
+        );
+        await this.sendCurse(
+          m.insufficient,
+          {
+            casterName,
+            cost: buffSettings.curseCost,
+            balance,
+            unit: economySettings.unit,
+          },
+          event,
+        );
+        return;
+      }
+
+      logger.error("Curse command failed", {
+        caster: caster.userLogin,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /** Pick a random present viewer (excluding the caster, streamer and bot). */
+  private async pickRandomTarget(
+    casterId: string,
+  ): Promise<BuffViewerInput | null> {
+    const excluded = await this.earningExclusionService.getExcludedIds();
+
+    const present = this.presenceLogService
+      .list()
+      .filter(
+        (entry) =>
+          entry.presentNow &&
+          entry.twitchUserId !== casterId &&
+          !excluded.has(entry.twitchUserId),
+      );
+
+    if (present.length === 0) {
+      return null;
+    }
+
+    const pick = present[Math.floor(Math.random() * present.length)]!;
+    return {
+      twitchUserId: pick.twitchUserId,
+      userLogin: pick.userLogin,
+      displayName: pick.displayName,
+    };
+  }
+
+  private findMentionTarget(
+    event: TwitchChatMessageEvent,
+  ): BuffViewerInput | null {
+    for (const fragment of event.message.fragments) {
+      if (fragment.type !== "mention" || !fragment.mention) {
+        continue;
+      }
+
+      const mention = fragment.mention as {
+        user_id?: string;
+        user_login?: string;
+        user_name?: string;
+      };
+
+      if (!mention.user_id || !mention.user_login) {
+        continue;
+      }
+
+      return {
+        twitchUserId: mention.user_id,
+        userLogin: mention.user_login,
+        displayName: mention.user_name || mention.user_login,
+      };
+    }
+
+    return null;
+  }
+
+  private async sendCurse(
+    template: string,
+    values: Record<string, unknown>,
+    event: TwitchChatMessageEvent,
+  ): Promise<void> {
+    await this.chatService.sendMessage(
+      this.renderTemplate(template, values),
+      event.message_id,
+    );
   }
 
   private async handleRoll(
@@ -183,6 +405,8 @@ export class BuffCommandRouter {
         return `${magnitude >= 0 ? "+" : ""}${magnitude}`;
       case "guarantee":
         return magnitude >= 0 ? "гарантований плюс" : "гарантований мінус";
+      case "no_earn":
+        return "стоп-заробіток";
       default:
         return String(magnitude);
     }

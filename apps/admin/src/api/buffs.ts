@@ -1,10 +1,35 @@
 import { http } from "./http";
-import type { BuffDefinition, SaveBuffDefinitionDto } from "../types/buffs";
+import type {
+  BuffDefinition,
+  BuffSettings,
+  SaveBuffDefinitionDto,
+  UpdateBuffSettingsInput,
+} from "../types/buffs";
 
 type ApiResponse<T> = {
   ok: boolean;
   data: T;
 };
+
+export async function getBuffSettings(): Promise<BuffSettings> {
+  const result = await http<ApiResponse<BuffSettings>>(
+    "/api/twitch/buffs/settings",
+    { method: "GET" },
+  );
+
+  return result.data;
+}
+
+export async function updateBuffSettings(
+  payload: UpdateBuffSettingsInput,
+): Promise<BuffSettings> {
+  const result = await http<ApiResponse<BuffSettings>>(
+    "/api/twitch/buffs/settings",
+    { method: "PATCH", body: JSON.stringify(payload) },
+  );
+
+  return result.data;
+}
 
 export async function getBuffDefinitions(): Promise<BuffDefinition[]> {
   const result = await http<ApiResponse<BuffDefinition[]>>(

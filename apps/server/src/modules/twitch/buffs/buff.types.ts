@@ -72,3 +72,71 @@ export type BuffViewerInput = {
   userLogin: string;
   displayName?: string | null;
 };
+
+// ----- Buff settings (the "curse" command) -----
+
+export const BUFF_SETTINGS_KEY = "buff";
+
+export type BuffMessages = {
+  cursed: string;
+  noTarget: string;
+  self: string;
+  shielded: string;
+  cooldown: string;
+  insufficient: string;
+  noDebuffs: string;
+};
+
+export type BuffSettingsDto = {
+  curseCommand: string;
+  curseCooldownSec: number;
+  curseCost: number;
+  messages: BuffMessages;
+  updatedAt: string;
+};
+
+export type UpdateBuffSettingsInput = Partial<
+  Omit<BuffSettingsDto, "updatedAt">
+>;
+
+export const defaultBuffMessages: BuffMessages = {
+  cursed:
+    "🔮 @{casterName} наклав прокляття «{title}» ({effect}) на @{victimName}!",
+  noTarget: "@{casterName}, зараз нема кого проклясти.",
+  self: "@{casterName}, себе проклясти не можна.",
+  shielded: "@{casterName}, @{victimName} під щитом — прокляття не подіяло.",
+  cooldown:
+    "@{casterName}, зачекай {secondsLeft} с перед наступним прокляттям.",
+  insufficient:
+    "@{casterName}, на прокляття треба {cost} {unit} (у тебе {balance}).",
+  noDebuffs: "@{casterName}, немає доступних дебафів для прокляття.",
+};
+
+export function normalizeBuffMessages(value: unknown): BuffMessages {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return defaultBuffMessages;
+  }
+
+  const record = value as Record<string, unknown>;
+  const pick = (key: keyof BuffMessages): string => {
+    const raw = record[key];
+    return typeof raw === "string" && raw.trim()
+      ? raw.trim()
+      : defaultBuffMessages[key];
+  };
+
+  return {
+    cursed: pick("cursed"),
+    noTarget: pick("noTarget"),
+    self: pick("self"),
+    shielded: pick("shielded"),
+    cooldown: pick("cooldown"),
+    insufficient: pick("insufficient"),
+    noDebuffs: pick("noDebuffs"),
+  };
+}
+
+export function normalizeCurseCommand(value: string): string {
+  const normalized = value.trim().replace(/^!+/, "").toLocaleLowerCase();
+  return normalized && !/\s/.test(normalized) ? normalized : "прокляти";
+}

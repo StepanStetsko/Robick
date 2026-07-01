@@ -21,6 +21,7 @@ import type { UpdateEconomySettingsInput } from "./economy/economy.types.js";
 import type {
   CreateBuffDefinitionInput,
   UpdateBuffDefinitionInput,
+  UpdateBuffSettingsInput,
 } from "./buffs/buff.types.js";
 import type { UpdateGiveawaySettingsInput } from "./giveaway/giveaway.types.js";
 import type { UpdateGuessGameSettingsInput } from "./guess/guess.types.js";
@@ -1336,6 +1337,29 @@ app.post<{
         ok: false,
         message,
       };
+    }
+  });
+
+  app.get("/twitch/buffs/settings", async () => {
+    return {
+      ok: true,
+      data: await twitchRuntimeContainer.buffService.getSettings(),
+    };
+  });
+
+  app.patch<{
+    Body: UpdateBuffSettingsInput;
+  }>("/twitch/buffs/settings", async (request, reply) => {
+    try {
+      const settings = await twitchRuntimeContainer.buffService.updateSettings(
+        request.body,
+      );
+      return { ok: true, data: settings };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to update buff settings";
+      reply.code(400);
+      return { ok: false, message };
     }
   });
 

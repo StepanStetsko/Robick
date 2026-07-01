@@ -7,6 +7,7 @@ import type { GiveawayService } from "../giveaway/GiveawayService.js";
 import type { GuessGameService } from "../guess/GuessGameService.js";
 import type { SongQueueService } from "../song-request/SongQueueService.js";
 import type { SupporterService } from "../supporter/SupporterService.js";
+import type { BuffService } from "../buffs/BuffService.js";
 import {
   COMMAND_GUIDE_KEY,
   saveCommandGuideSchema,
@@ -27,6 +28,7 @@ export class CommandGuideService {
     private readonly guessGameService: GuessGameService,
     private readonly songQueueService: SongQueueService,
     private readonly supporterService: SupporterService,
+    private readonly buffService: BuffService,
     private readonly db: PrismaClient = prisma,
   ) {}
 
@@ -79,7 +81,7 @@ export class CommandGuideService {
   }
 
   async generateFromSettings(): Promise<GuideGroup[]> {
-    const [economy, features, giveaway, guess, song, supporter] =
+    const [economy, features, giveaway, guess, song, supporter, buff] =
       await Promise.all([
         this.economyService.getSettings(),
         this.funMeterService.listFeatures(),
@@ -87,6 +89,7 @@ export class CommandGuideService {
         this.guessGameService.getSettings(),
         this.songQueueService.getSettings(),
         this.supporterService.getSettings(),
+        this.buffService.getSettings(),
       ]);
 
     const groups: GuideGroup[] = [];
@@ -137,6 +140,11 @@ export class CommandGuideService {
           description: `Крутити випадковий баф або дебаф за ${economy.buffRollCost} ${economy.unit}`,
         },
         { command: `!${economy.buffListCommand}`, description: "Список можливих ефектів" },
+        {
+          command: `!${buff.curseCommand} [@нік]`,
+          description:
+            "Накласти випадковий дебаф на іншого (без ніка — на випадкового присутнього). Щит захищає",
+        },
       ],
     });
 

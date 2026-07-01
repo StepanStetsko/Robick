@@ -158,11 +158,6 @@ const economyCommandRouter = new EconomyCommandRouter(
 
 const buffRepository = new BuffRepository();
 const buffService = new BuffService(buffRepository, economyService);
-const buffCommandRouter = new BuffCommandRouter(
-  twitchChatService,
-  economyService,
-  buffService,
-);
 const protectionRepository = new ProtectionRepository();
 const statusCommandRouter = new StatusCommandRouter(
   twitchChatService,
@@ -210,6 +205,14 @@ const chatActivityTracker = new ChatActivityTracker();
 const presenceTracker = new PresenceTracker();
 const presenceLogRepository = new PresenceLogRepository();
 const presenceLogService = new PresenceLogService(presenceLogRepository);
+const buffCommandRouter = new BuffCommandRouter(
+  twitchChatService,
+  economyService,
+  buffService,
+  presenceLogService,
+  protectionRepository,
+  earningExclusionService,
+);
 const supporterRepository = new SupporterRepository();
 const supporterService = new SupporterService(supporterRepository);
 const presenceEarningService = new PresenceEarningService(
@@ -261,6 +264,7 @@ const commandGuideService = new CommandGuideService(
   guessGameService,
   songQueueService,
   supporterService,
+  buffService,
 );
 
 const supporterBonusCommandRouter = new SupporterBonusCommandRouter(

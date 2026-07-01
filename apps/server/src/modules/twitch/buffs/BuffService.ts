@@ -9,15 +9,19 @@ import { BuffRepository } from "./BuffRepository.js";
 import {
   BUFF_EFFECT_TYPES,
   BUFF_KINDS,
+  normalizeBuffMessages,
+  normalizeCurseCommand,
   type ActiveBuffDto,
   type BuffDefinitionDto,
   type BuffDurationMode,
   type BuffEffectType,
   type BuffKind,
+  type BuffSettingsDto,
   type BuffTarget,
   type BuffViewerInput,
   type CreateBuffDefinitionInput,
   type UpdateBuffDefinitionInput,
+  type UpdateBuffSettingsInput,
 } from "./buff.types.js";
 import type {
   ActiveBuff,
@@ -25,12 +29,105 @@ import type {
 } from "../../../generated/prisma/client.js";
 
 const KEY_REGEX = /^[a-z0-9_]{2,64}$/;
+const SETTINGS_TTL_MS = 30_000;
 
 export class BuffService {
+  private settingsCache: { value: BuffSettingsDto; at: number } | null = null;
+
   constructor(
     private readonly repository: BuffRepository,
     private readonly economyService: EconomyService,
   ) {}
+
+  async getSettings(): Promise<BuffSettingsDto> {
+    const now = Date.now();
+    if (this.settingsCache && now - this.settingsCache.at < SETTINGS_TTL_MS) {
+      return this.settingsCache.value;
+    }
+
+    const row = await this.repository.getSettingsRow();
+    const value: BuffSettingsDto = {
+      curseCommand: row.curseCommand,
+      curseCooldownSec: row.curseCooldownSec,
+      curseCost: row.curseCost,
+      messages: normalizeBuffMessages(row.messages),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+
+    this.settingsCache = { value, at: now };
+    return value;
+  }
+
+  async updateSettings(
+    input: UpdateBuffSettingsInput,
+  ): Promise<BuffSettingsDto> {
+    const normalized: UpdateBuffSettingsInput = {
+      ...input,
+      ...(input.curseCommand !== undefined
+        ? { curseCommand: normalizeCurseCommand(input.curseCommand) }
+        : {}),
+      ...(input.curseCooldownSec !== undefined
+        ? { curseCooldownSec: Math.max(0, Math.round(input.curseCooldownSec)) }
+        : {}),
+      ...(input.curseCost !== undefined
+        ? { curseCost: Math.max(0, Math.round(input.curseCost)) }
+        : {}),
+    };
+
+    await this.repository.updateSettings(normalized);
+    this.settingsCache = null;
+    return this.getSettings();
+  }
+
+  /**
+   * Applies a random enabled DEBUFF to a target (the "curse" command). No cost
+   * or chance flip here — the caller handles charging and cooldown. Returns null
+   * if there are no enabled debuffs to draw from.
+   */
+  async hasEnabledDebuffs(): Promise<boolean> {
+    const enabled = await this.repository.listEnabledDefinitions();
+    return enabled.some((def) => def.kind === "debuff");
+  }
+
+  async applyRandomDebuff(
+    target: BuffViewerInput,
+    source = "curse",
+  ): Promise<{ definition: BuffDefinitionDto; buff: ActiveBuffDto } | null> {
+    const enabled = await this.repository.listEnabledDefinitions();
+    const debuffs = enabled.filter((def) => def.kind === "debuff");
+
+    if (debuffs.length === 0) {
+      return null;
+    }
+
+    const definition = debuffs[Math.floor(Math.random() * debuffs.length)]!;
+    const now = Date.now();
+    const expiresAt =
+      definition.durationMode === "time"
+        ? new Date(now + definition.durationValue * 60_000)
+        : null;
+    const rollsRemaining =
+      definition.durationMode === "rolls" ? definition.durationValue : null;
+
+    const active = await this.repository.createActiveBuff({
+      twitchUserId: target.twitchUserId,
+      userLogin: target.userLogin,
+      buffKey: definition.key,
+      title: definition.title,
+      kind: definition.kind,
+      effectType: definition.effectType,
+      magnitude: definition.magnitude,
+      durationMode: definition.durationMode,
+      expiresAt,
+      rollsRemaining,
+      source,
+    });
+
+    return {
+      definition: this.toDefinitionDto(definition),
+      buff: this.toActiveDto(active),
+    };
+  }
 
   async listDefinitions(): Promise<BuffDefinitionDto[]> {
     const definitions = await this.repository.listDefinitions();

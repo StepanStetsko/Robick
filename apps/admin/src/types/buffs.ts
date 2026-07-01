@@ -54,3 +54,23 @@ export type SaveBuffDefinitionDto = {
   target: BuffTarget;
   enabled: boolean;
 };
+
+export type BuffMessages = {
+  cursed: string;
+  noTarget: string;
+  self: string;
+  shielded: string;
+  cooldown: string;
+  insufficient: string;
+  noDebuffs: string;
+};
+
+export type BuffSettings = {
+  curseCommand: string;
+  curseCooldownSec: number;
+  curseCost: number;
+  messages: BuffMessages;
+  updatedAt: string;
+};
+
+export type UpdateBuffSettingsInput = Partial<Omit<BuffSettings, "updatedAt">>;

@@ -3,16 +3,30 @@ import {
   createBuffDefinition,
   deleteBuffDefinition,
   getBuffDefinitions,
+  getBuffSettings,
   updateBuffDefinition,
+  updateBuffSettings,
 } from "../api/buffs";
 import type {
   BuffDefinition,
   BuffDurationMode,
   BuffEffectType,
   BuffKind,
+  BuffMessages,
+  BuffSettings,
   BuffTarget,
   SaveBuffDefinitionDto,
 } from "../types/buffs";
+
+const curseMessageFields: { key: keyof BuffMessages; label: string; hint: string }[] = [
+  { key: "cursed", label: "Наклав прокляття", hint: "{casterName}, {victimName}, {title}, {effect}" },
+  { key: "noTarget", label: "Нема кого проклясти", hint: "{casterName}" },
+  { key: "self", label: "Себе не можна", hint: "{casterName}" },
+  { key: "shielded", label: "Ціль під щитом", hint: "{casterName}, {victimName}" },
+  { key: "cooldown", label: "Кулдаун", hint: "{casterName}, {secondsLeft}" },
+  { key: "insufficient", label: "Недостатньо балів", hint: "{casterName}, {cost}, {balance}, {unit}" },
+  { key: "noDebuffs", label: "Немає дебафів", hint: "{casterName}" },
+];
 
 type FormState = {
   key: string;
@@ -63,6 +77,10 @@ export function BuffsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [curse, setCurse] = useState<BuffSettings | null>(null);
+  const [curseSaving, setCurseSaving] = useState(false);
+  const [curseError, setCurseError] = useState<string | null>(null);
+  const [curseSavedAt, setCurseSavedAt] = useState<string | null>(null);
 
   async function loadBuffs() {
     setError(null);
@@ -76,9 +94,59 @@ export function BuffsPage() {
     }
   }
 
+  async function loadCurse() {
+    try {
+      setCurse(await getBuffSettings());
+    } catch {
+      // non-critical
+    }
+  }
+
   useEffect(() => {
     void loadBuffs();
+    void loadCurse();
   }, []);
+
+  async function handleSaveCurse(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!curse) {
+      return;
+    }
+
+    setCurseSaving(true);
+    setCurseError(null);
+    setCurseSavedAt(null);
+
+    try {
+      const updated = await updateBuffSettings({
+        curseCommand: curse.curseCommand,
+        curseCooldownSec: curse.curseCooldownSec,
+        curseCost: curse.curseCost,
+        messages: curse.messages,
+      });
+      setCurse(updated);
+      setCurseSavedAt(new Date().toLocaleTimeString());
+    } catch (err) {
+      setCurseError(err instanceof Error ? err.message : "Не вдалося зберегти");
+    } finally {
+      setCurseSaving(false);
+    }
+  }
+
+  function setCurseValue<K extends keyof BuffSettings>(
+    key: K,
+    value: BuffSettings[K],
+  ) {
+    setCurse((current) => (current ? { ...current, [key]: value } : current));
+  }
+
+  function setCurseMessage(key: keyof BuffMessages, value: string) {
+    setCurse((current) =>
+      current
+        ? { ...current, messages: { ...current.messages, [key]: value } }
+        : current,
+    );
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -386,6 +454,110 @@ export function BuffsPage() {
           </div>
         </div>
       </div>
+
+      {curse ? (
+        <div className="card">
+          <div className="card__header">
+            <div>
+              <h2 className="card__title">Прокляття (дебаф на іншого)</h2>
+              <p className="card__subtitle">
+                Команда, якою глядач наводить випадковий дебаф на когось
+              </p>
+            </div>
+          </div>
+
+          <p className="tab-panel__intro">
+            <strong>!{curse.curseCommand}</strong> — випадкова ціль серед
+            присутніх; <strong>!{curse.curseCommand} @нік</strong> — конкретна.
+            Доступно всім. Щит захищає ціль (як від крадіжки). Накладає
+            випадковий <em>дебаф</em> із каталогу вище.
+          </p>
+
+          <form className="form" onSubmit={handleSaveCurse}>
+            <div className="form form--inline">
+              <label className="field">
+                <span className="field__label">Команда прокляття</span>
+                <input
+                  className="field__input"
+                  value={curse.curseCommand}
+                  onChange={(event) =>
+                    setCurseValue("curseCommand", event.target.value)
+                  }
+                  disabled={curseSaving}
+                  required
+                />
+                <span className="field__hint">без «!»</span>
+              </label>
+
+              <label className="field">
+                <span className="field__label">Кулдаун на юзера (с)</span>
+                <input
+                  className="field__input"
+                  type="number"
+                  min={0}
+                  value={curse.curseCooldownSec}
+                  onChange={(event) =>
+                    setCurseValue(
+                      "curseCooldownSec",
+                      Number(event.target.value) || 0,
+                    )
+                  }
+                  disabled={curseSaving}
+                />
+              </label>
+
+              <label className="field">
+                <span className="field__label">Ціна (у балах)</span>
+                <input
+                  className="field__input"
+                  type="number"
+                  min={0}
+                  value={curse.curseCost}
+                  onChange={(event) =>
+                    setCurseValue("curseCost", Number(event.target.value) || 0)
+                  }
+                  disabled={curseSaving}
+                />
+                <span className="field__hint">0 = безкоштовно</span>
+              </label>
+            </div>
+
+            <h3 className="command-ref__group-title">Повідомлення</h3>
+            {curseMessageFields.map((meta) => (
+              <label className="field" key={meta.key}>
+                <span className="field__label">{meta.label}</span>
+                <textarea
+                  className="field__input field__input--textarea"
+                  rows={2}
+                  value={curse.messages[meta.key]}
+                  onChange={(event) =>
+                    setCurseMessage(meta.key, event.target.value)
+                  }
+                  disabled={curseSaving}
+                />
+                <span className="field__hint">{meta.hint}</span>
+              </label>
+            ))}
+
+            <div className="form__footer">
+              <button
+                className="button button--primary"
+                type="submit"
+                disabled={curseSaving}
+              >
+                {curseSaving ? "Збереження..." : "Зберегти"}
+              </button>
+              {curseError ? (
+                <span className="field__hint" style={{ color: "#ffb5b2" }}>
+                  {curseError}
+                </span>
+              ) : curseSavedAt ? (
+                <span className="field__hint">Збережено о {curseSavedAt}</span>
+              ) : null}
+            </div>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }
