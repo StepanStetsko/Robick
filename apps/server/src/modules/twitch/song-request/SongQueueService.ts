@@ -6,13 +6,16 @@ import {
 } from "./SongRequestRepository.js";
 import {
   canonicalYouTubeUrl,
+  fetchYouTubeDurationSec,
   fetchYouTubeOEmbed,
   parseYouTubeVideoId,
 } from "./youtube.js";
+import type { SongBlock } from "../../../generated/prisma/client.js";
 import {
   normalizeCommandName,
   normalizeSongRequestMessages,
   type OverlayState,
+  type SongBlockDto,
   type SongQueueState,
   type SongRequestDto,
   type SongRequestSettingsDto,
@@ -33,8 +36,17 @@ export type EnqueueResult =
   | { ok: true; entry: SongRequestDto; position: number }
   | {
       ok: false;
-      reason: "disabled" | "invalidUrl" | "queueFull" | "cooldown" | "duplicate";
+      reason:
+        | "disabled"
+        | "invalidUrl"
+        | "queueFull"
+        | "cooldown"
+        | "duplicate"
+        | "blocked"
+        | "tooLong";
       secondsLeft?: number;
+      durationSec?: number;
+      maxDurationSec?: number;
     };
 
 export class SongQueueService {
@@ -63,6 +75,7 @@ export class SongQueueService {
       voteSkipCommand: row.voteSkipCommand,
       pauseCommand: row.pauseCommand,
       skipVotesNeeded: row.skipVotesNeeded,
+      historyLimit: row.historyLimit,
       messages: normalizeSongRequestMessages(row.messages),
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -88,6 +101,9 @@ export class SongQueueService {
       ...(input.skipVotesNeeded !== undefined
         ? { skipVotesNeeded: Math.max(1, Math.round(input.skipVotesNeeded)) }
         : {}),
+      ...(input.historyLimit !== undefined
+        ? { historyLimit: Math.max(0, Math.round(input.historyLimit)) }
+        : {}),
     };
 
     await this.repo.updateSettings(normalized);
@@ -105,6 +121,10 @@ export class SongQueueService {
     const videoId = parseYouTubeVideoId(input.url);
     if (!videoId) {
       return { ok: false, reason: "invalidUrl" };
+    }
+
+    if (await this.repo.findBlockByVideoId(videoId)) {
+      return { ok: false, reason: "blocked" };
     }
 
     const duplicate = await this.repo.findActiveByVideoId(videoId);
@@ -138,11 +158,26 @@ export class SongQueueService {
 
     const meta = await fetchYouTubeOEmbed(videoId);
 
+    // Enforce the max-duration limit only when one is configured; the duration
+    // is best-effort (keyless) so an unknown length never blocks a request.
+    let durationSec: number | null = null;
+    if (settings.maxDurationSec > 0) {
+      durationSec = await fetchYouTubeDurationSec(videoId);
+      if (durationSec !== null && durationSec > settings.maxDurationSec) {
+        return {
+          ok: false,
+          reason: "tooLong",
+          durationSec,
+          maxDurationSec: settings.maxDurationSec,
+        };
+      }
+    }
+
     const data: CreateSongRequestInput = {
       videoId,
       url: canonicalYouTubeUrl(videoId),
       title: meta.title,
-      durationSec: null,
+      durationSec,
       thumbnailUrl: meta.thumbnailUrl,
       requestedBy: input.requestedBy,
       requesterId: input.requesterId,
@@ -160,9 +195,53 @@ export class SongQueueService {
   }
 
   /** Recently played/skipped tracks, newest first (for the history views). */
-  async getHistory(limit = 20): Promise<SongRequestDto[]> {
-    const rows = await this.repo.listHistory(limit);
+  async getHistory(limit?: number): Promise<SongRequestDto[]> {
+    const effective = limit ?? (await this.getSettings()).historyLimit;
+    const rows = await this.repo.listHistory(effective);
     return rows.map(toDto);
+  }
+
+  /** Trim stored history down to the configured limit. */
+  private async pruneHistoryToLimit(): Promise<void> {
+    const settings = await this.getSettings();
+    await this.repo.pruneHistory(settings.historyLimit);
+  }
+
+  // ----- Blocklist -----
+
+  async listBlocks(): Promise<SongBlockDto[]> {
+    const rows = await this.repo.listBlocks();
+    return rows.map(toBlockDto);
+  }
+
+  async addBlock(
+    url: string,
+    addedBy: string | null,
+  ): Promise<
+    { ok: true; entry: SongBlockDto } | { ok: false; reason: "invalidUrl" }
+  > {
+    const videoId = parseYouTubeVideoId(url);
+    if (!videoId) {
+      return { ok: false, reason: "invalidUrl" };
+    }
+
+    const meta = await fetchYouTubeOEmbed(videoId);
+    const row = await this.repo.addBlock({
+      videoId,
+      url: canonicalYouTubeUrl(videoId),
+      title: meta.title,
+      addedBy,
+    });
+
+    // If it was already queued/playing, pull it out now.
+    await this.repo.deleteActiveByVideoId(videoId);
+    await this.publishState();
+
+    return { ok: true, entry: toBlockDto(row) };
+  }
+
+  async removeBlock(id: string): Promise<void> {
+    await this.repo.removeBlock(id);
   }
 
   /**
@@ -317,6 +396,7 @@ export class SongQueueService {
     const playing = await this.repo.getPlaying();
     if (playing) {
       await this.repo.setStatus(playing.id, "played", new Date());
+      await this.pruneHistoryToLimit();
     }
 
     this.resetControls();
@@ -334,6 +414,7 @@ export class SongQueueService {
     const playing = await this.repo.getPlaying();
     if (playing) {
       await this.repo.setStatus(playing.id, "skipped", new Date());
+      await this.pruneHistoryToLimit();
     }
 
     this.resetControls();
@@ -378,5 +459,16 @@ function toDto(row: SongRequest): SongRequestDto {
     status: row.status,
     createdAt: row.createdAt.toISOString(),
     playedAt: row.playedAt ? row.playedAt.toISOString() : null,
+  };
+}
+
+function toBlockDto(row: SongBlock): SongBlockDto {
+  return {
+    id: row.id,
+    videoId: row.videoId,
+    url: row.url,
+    title: row.title,
+    addedBy: row.addedBy,
+    createdAt: row.createdAt.toISOString(),
   };
 }

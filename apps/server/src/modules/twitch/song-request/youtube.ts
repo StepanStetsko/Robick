@@ -55,6 +55,48 @@ export function canonicalYouTubeUrl(videoId: string): string {
   return `https://www.youtube.com/watch?v=${videoId}`;
 }
 
+/**
+ * Best-effort keyless duration (in seconds): scrapes "lengthSeconds" from the
+ * watch page. Returns null when it can't be determined (never throws) — callers
+ * should treat null as "unknown" and not block on it.
+ */
+export async function fetchYouTubeDurationSec(
+  videoId: string,
+): Promise<number | null> {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    const response = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+      signal: controller.signal,
+      headers: {
+        // A desktop UA + English locale nudges YouTube to serve the player
+        // payload (which carries lengthSeconds) instead of a consent page.
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+    });
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const html = await response.text();
+    const match = html.match(/"lengthSeconds":"(\d+)"/);
+    if (!match) {
+      return null;
+    }
+
+    const seconds = Number.parseInt(match[1], 10);
+    return Number.isFinite(seconds) && seconds > 0 ? seconds : null;
+  } catch (error: unknown) {
+    logger.warn("YouTube duration fetch failed", error);
+    return null;
+  }
+}
+
 export type YouTubeOEmbed = {
   title: string | null;
   thumbnailUrl: string | null;

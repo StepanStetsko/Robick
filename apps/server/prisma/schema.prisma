@@ -178,14 +178,25 @@ model SongRequestSettings {
   command            String   @default("пісня")
   enabled            Boolean  @default(true)
   maxQueuePerUser    Int      @default(2)
-  maxDurationSec     Int      @default(0) // 0 = без ліміту (потребує YouTube Data API)
+  maxDurationSec     Int      @default(0) // 0 = без ліміту (тривалість тягнеться best-effort з YouTube)
   perUserCooldownSec Int      @default(0)
   voteSkipCommand    String   @default("скіп")
   pauseCommand       String   @default("пауза")
   skipVotesNeeded    Int      @default(5)
+  historyLimit       Int      @default(20) // скільки зіграних/пропущених тримати в історії
   messages           Json?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+}
+
+// Заборонені для замовлення відео (блок-лист, керується в адмінці).
+model SongBlock {
+  id        String   @id @default(cuid())
+  videoId   String   @unique
+  url       String
+  title     String?
+  addedBy   String?
+  createdAt DateTime @default(now())
 }
 
 model GiveawaySettings {

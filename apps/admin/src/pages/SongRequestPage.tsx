@@ -1,12 +1,15 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
   addSong,
+  addSongBlock,
   clearSongQueue,
+  getSongBlocklist,
   getSongHistory,
   getSongQueue,
   getSongRequestSettings,
   playPreviousSong,
   removeSong,
+  removeSongBlock,
   skipCurrentSong,
   togglePauseSong,
   updateSongRequestSettings,
@@ -14,13 +17,14 @@ import {
 import { subscribeToTwitchRealtime } from "../api/realtime";
 import { NowPlayingCard } from "../components/NowPlayingCard";
 import type {
+  SongBlockEntry,
   SongQueueState,
   SongRequestEntry,
   SongRequestMessages,
   SongRequestSettings,
 } from "../types/songRequest";
 
-type TabId = "queue" | "history" | "settings" | "messages";
+type TabId = "queue" | "history" | "blocklist" | "settings" | "messages";
 
 type FormState = {
   command: string;
@@ -31,6 +35,7 @@ type FormState = {
   voteSkipCommand: string;
   pauseCommand: string;
   skipVotesNeeded: number;
+  historyLimit: number;
   messages: SongRequestMessages;
 };
 
@@ -41,6 +46,8 @@ const messageFields: { key: keyof SongRequestMessages; label: string; hint?: str
   { key: "invalidUrl", label: "Невірне посилання", hint: "{displayName}, {command}" },
   { key: "disabled", label: "Вимкнено", hint: "{displayName}" },
   { key: "duplicate", label: "Дублікат у черзі", hint: "{displayName}" },
+  { key: "blocked", label: "Заборонена пісня", hint: "{displayName}" },
+  { key: "tooLong", label: "Пісня задовга", hint: "{displayName}, {durationMin}, {maxMin}, {durationSec}, {maxSec}" },
   { key: "voteProgress", label: "Голос за пропуск", hint: "{displayName}, {votes}, {needed}, {left}" },
   { key: "voteAlready", label: "Уже голосував", hint: "{displayName}, {votes}, {needed}" },
   { key: "voteSkipped", label: "Пропущено голосуванням", hint: "{votes}, {needed}" },
@@ -60,6 +67,7 @@ function settingsToForm(settings: SongRequestSettings): FormState {
     voteSkipCommand: settings.voteSkipCommand,
     pauseCommand: settings.pauseCommand,
     skipVotesNeeded: settings.skipVotesNeeded,
+    historyLimit: settings.historyLimit,
     messages: settings.messages,
   };
 }
@@ -83,6 +91,8 @@ export function SongRequestPage() {
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [copied, setCopied] = useState<"overlay" | "page" | null>(null);
   const [history, setHistory] = useState<SongRequestEntry[]>([]);
+  const [blocklist, setBlocklist] = useState<SongBlockEntry[]>([]);
+  const [blockUrl, setBlockUrl] = useState("");
 
   const overlayUrl = `${window.location.origin}/overlay/player`;
   const publicPageUrl = `${window.location.origin}/songs`;
@@ -105,6 +115,14 @@ export function SongRequestPage() {
     }
   }
 
+  async function loadBlocklist() {
+    try {
+      setBlocklist(await getSongBlocklist());
+    } catch {
+      // non-critical — blocklist stays as-is
+    }
+  }
+
   async function load() {
     try {
       const [settings, queue] = await Promise.all([
@@ -114,10 +132,40 @@ export function SongRequestPage() {
       setForm(settingsToForm(settings));
       setState(queue);
       void loadHistory();
+      void loadBlocklist();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося завантажити");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleAddBlock(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+
+    try {
+      await addSongBlock(blockUrl.trim());
+      setBlockUrl("");
+      await loadBlocklist();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не вдалося заблокувати");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRemoveBlock(id: string) {
+    setBusy(true);
+    setError(null);
+
+    try {
+      setBlocklist(await removeSongBlock(id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не вдалося прибрати");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -256,6 +304,7 @@ export function SongRequestPage() {
           {([
             ["queue", "Черга"],
             ["history", "Історія"],
+            ["blocklist", "Блок-лист"],
             ["settings", "Налаштування"],
             ["messages", "Повідомлення"],
           ] as [TabId, string][]).map(([id, label]) => (
@@ -510,6 +559,79 @@ export function SongRequestPage() {
           </div>
         ) : null}
 
+        {activeTab === "blocklist" ? (
+          <div className="command-ref__group">
+            <h3 className="command-ref__group-title">
+              Блок-лист ({blocklist.length})
+            </h3>
+            <p className="tab-panel__intro">
+              Заборонені пісні — їх не можна замовити ні в чаті, ні на сайті.
+              Якщо заборонена пісня вже в черзі, вона одразу прибирається.
+            </p>
+
+            <form className="form form--inline" onSubmit={handleAddBlock}>
+              <label className="field" style={{ flex: 2 }}>
+                <span className="field__label">
+                  Заблокувати пісню (YouTube URL)
+                </span>
+                <input
+                  className="field__input"
+                  value={blockUrl}
+                  onChange={(event) => setBlockUrl(event.target.value)}
+                  placeholder="https://youtu.be/..."
+                  disabled={busy}
+                />
+              </label>
+              <div className="actions">
+                <button
+                  className="button button--danger"
+                  type="submit"
+                  disabled={busy}
+                >
+                  Заблокувати
+                </button>
+              </div>
+            </form>
+
+            {blocklist.length === 0 ? (
+              <div className="state-block">Блок-лист порожній</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>пісня</th>
+                      <th>додав</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {blocklist.map((entry) => (
+                      <tr key={entry.id}>
+                        <td>
+                          <strong>{entry.title || entry.videoId}</strong>
+                          <span className="table-muted">{entry.url}</span>
+                        </td>
+                        <td>{entry.addedBy || "—"}</td>
+                        <td>
+                          <button
+                            className="button button--ghost button--small"
+                            type="button"
+                            onClick={() => void handleRemoveBlock(entry.id)}
+                            disabled={busy}
+                          >
+                            Прибрати
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : null}
+
         {form && (activeTab === "settings" || activeTab === "messages") ? (
           <form className="form" onSubmit={handleSave}>
             {activeTab === "settings" ? (
@@ -577,7 +699,27 @@ export function SongRequestPage() {
                       }
                       disabled={saving}
                     />
-                    <span className="field__hint">0 — без ліміту (потребує YouTube API)</span>
+                    <span className="field__hint">
+                      0 — без ліміту. Тривалість тягнеться з YouTube (best-effort);
+                      якщо не визначилась — пісня проходить.
+                    </span>
+                  </label>
+
+                  <label className="field">
+                    <span className="field__label">Розмір історії</span>
+                    <input
+                      className="field__input"
+                      type="number"
+                      min={0}
+                      value={form.historyLimit}
+                      onChange={(event) =>
+                        setFormValue("historyLimit", Number(event.target.value) || 0)
+                      }
+                      disabled={saving}
+                    />
+                    <span className="field__hint">
+                      скільки зіграних/пропущених пісень зберігати (деф. 20)
+                    </span>
                   </label>
                 </div>
 

@@ -2,6 +2,7 @@ import { prisma } from "../../../core/db/PrismaClient.js";
 import { Prisma } from "../../../generated/prisma/client.js";
 import type {
   PrismaClient,
+  SongBlock,
   SongRequest,
   SongRequestSettings,
 } from "../../../generated/prisma/client.js";
@@ -73,6 +74,9 @@ export class SongRequestRepository {
           : {}),
         ...(input.skipVotesNeeded !== undefined
           ? { skipVotesNeeded: input.skipVotesNeeded }
+          : {}),
+        ...(input.historyLimit !== undefined
+          ? { historyLimit: input.historyLimit }
           : {}),
         ...(input.messages !== undefined
           ? { messages: input.messages as unknown as Prisma.InputJsonValue }
@@ -178,5 +182,60 @@ export class SongRequestRepository {
     await this.db.songRequest.deleteMany({
       where: { status: { in: ["queued", "playing"] } },
     });
+  }
+
+  /** Remove active (queued/playing) entries for a video — used when blocking. */
+  async deleteActiveByVideoId(videoId: string): Promise<void> {
+    await this.db.songRequest.deleteMany({
+      where: { videoId, status: { in: ["queued", "playing"] } },
+    });
+  }
+
+  /** Keep only the newest `keep` played/skipped tracks; delete the rest. */
+  async pruneHistory(keep: number): Promise<void> {
+    if (keep < 0) {
+      return;
+    }
+
+    const survivors = await this.db.songRequest.findMany({
+      where: { status: { in: ["played", "skipped"] } },
+      orderBy: { playedAt: "desc" },
+      select: { id: true },
+      take: keep,
+    });
+
+    await this.db.songRequest.deleteMany({
+      where: {
+        status: { in: ["played", "skipped"] },
+        id: { notIn: survivors.map((row) => row.id) },
+      },
+    });
+  }
+
+  // ----- Blocklist -----
+
+  async listBlocks(): Promise<SongBlock[]> {
+    return this.db.songBlock.findMany({ orderBy: { createdAt: "desc" } });
+  }
+
+  async findBlockByVideoId(videoId: string): Promise<SongBlock | null> {
+    return this.db.songBlock.findUnique({ where: { videoId } });
+  }
+
+  async addBlock(input: {
+    videoId: string;
+    url: string;
+    title: string | null;
+    addedBy: string | null;
+  }): Promise<SongBlock> {
+    return this.db.songBlock.upsert({
+      where: { videoId: input.videoId },
+      create: input,
+      update: { url: input.url, title: input.title, addedBy: input.addedBy },
+    });
+  }
+
+  async removeBlock(id: string): Promise<void> {
+    await this.db.songBlock.deleteMany({ where: { id } });
   }
 }

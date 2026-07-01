@@ -1747,7 +1747,44 @@ app.post<{
   app.get("/twitch/song-request/history", async () => {
     return {
       ok: true,
-      data: await twitchRuntimeContainer.songQueueService.getHistory(30),
+      data: await twitchRuntimeContainer.songQueueService.getHistory(),
+    };
+  });
+
+  // ----- Blocklist (banned videos) -----
+
+  app.get("/twitch/song-request/blocklist", async () => {
+    return {
+      ok: true,
+      data: await twitchRuntimeContainer.songQueueService.listBlocks(),
+    };
+  });
+
+  app.post<{
+    Body: { url?: string };
+  }>("/twitch/song-request/blocklist", async (request, reply) => {
+    const result = await twitchRuntimeContainer.songQueueService.addBlock(
+      request.body?.url ?? "",
+      "admin",
+    );
+
+    if (!result.ok) {
+      reply.code(400);
+      return { ok: false, message: result.reason };
+    }
+
+    return { ok: true, data: result.entry };
+  });
+
+  app.delete<{
+    Params: { id: string };
+  }>("/twitch/song-request/blocklist/:id", async (request) => {
+    await twitchRuntimeContainer.songQueueService.removeBlock(
+      request.params.id,
+    );
+    return {
+      ok: true,
+      data: await twitchRuntimeContainer.songQueueService.listBlocks(),
     };
   });
 
@@ -1957,7 +1994,7 @@ app.post<{
   app.get("/public/song-queue/history", async () => {
     return {
       ok: true,
-      data: await twitchRuntimeContainer.songQueueService.getHistory(20),
+      data: await twitchRuntimeContainer.songQueueService.getHistory(),
     };
   });
 
@@ -1976,6 +2013,8 @@ app.post<{
         ok: false,
         reason: result.reason,
         secondsLeft: result.secondsLeft,
+        durationSec: result.durationSec,
+        maxDurationSec: result.maxDurationSec,
       };
     }
 

@@ -1,5 +1,6 @@
 import { http } from "./http";
 import type {
+  SongBlockEntry,
   SongQueueState,
   SongRequestEntry,
   SongRequestSettings,
@@ -97,6 +98,33 @@ export async function clearSongQueue(): Promise<SongQueueState> {
 export async function removeSong(id: string): Promise<SongQueueState> {
   const result = await http<ApiResponse<SongQueueState>>(
     `/api/twitch/song-request/${id}`,
+    { method: "DELETE" },
+  );
+
+  return result.data;
+}
+
+export async function getSongBlocklist(): Promise<SongBlockEntry[]> {
+  const result = await http<ApiResponse<SongBlockEntry[]>>(
+    "/api/twitch/song-request/blocklist",
+    { method: "GET" },
+  );
+
+  return result.data;
+}
+
+export async function addSongBlock(url: string): Promise<SongBlockEntry> {
+  const result = await http<ApiResponse<SongBlockEntry>>(
+    "/api/twitch/song-request/blocklist",
+    { method: "POST", body: JSON.stringify({ url }) },
+  );
+
+  return result.data;
+}
+
+export async function removeSongBlock(id: string): Promise<SongBlockEntry[]> {
+  const result = await http<ApiResponse<SongBlockEntry[]>>(
+    `/api/twitch/song-request/blocklist/${id}`,
     { method: "DELETE" },
   );
 

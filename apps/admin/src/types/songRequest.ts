@@ -5,6 +5,8 @@ export type SongRequestMessages = {
   invalidUrl: string;
   disabled: string;
   duplicate: string;
+  blocked: string;
+  tooLong: string;
   voteProgress: string;
   voteAlready: string;
   voteSkipped: string;
@@ -23,6 +25,7 @@ export type SongRequestSettings = {
   voteSkipCommand: string;
   pauseCommand: string;
   skipVotesNeeded: number;
+  historyLimit: number;
   messages: SongRequestMessages;
   updatedAt: string;
 };
@@ -30,6 +33,15 @@ export type SongRequestSettings = {
 export type UpdateSongRequestSettingsInput = Partial<
   Omit<SongRequestSettings, "updatedAt">
 >;
+
+export type SongBlockEntry = {
+  id: string;
+  videoId: string;
+  url: string;
+  title: string | null;
+  addedBy: string | null;
+  createdAt: string;
+};
 
 export type SongRequestEntry = {
   id: string;

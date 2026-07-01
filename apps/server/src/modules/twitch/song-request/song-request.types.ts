@@ -7,6 +7,8 @@ export type SongRequestMessages = {
   invalidUrl: string;
   disabled: string;
   duplicate: string;
+  blocked: string;
+  tooLong: string;
   voteProgress: string;
   voteAlready: string;
   voteSkipped: string;
@@ -25,6 +27,7 @@ export type SongRequestSettingsDto = {
   voteSkipCommand: string;
   pauseCommand: string;
   skipVotesNeeded: number;
+  historyLimit: number;
   messages: SongRequestMessages;
   updatedAt: string;
 };
@@ -32,6 +35,15 @@ export type SongRequestSettingsDto = {
 export type UpdateSongRequestSettingsInput = Partial<
   Omit<SongRequestSettingsDto, "updatedAt">
 >;
+
+export type SongBlockDto = {
+  id: string;
+  videoId: string;
+  url: string;
+  title: string | null;
+  addedBy: string | null;
+  createdAt: string;
+};
 
 export type SongRequestDto = {
   id: string;
@@ -80,6 +92,9 @@ export const defaultSongRequestMessages: SongRequestMessages = {
     "@{displayName}, дай посилання на YouTube: !{command} <посилання>.",
   disabled: "@{displayName}, замовлення пісень зараз вимкнено.",
   duplicate: "@{displayName}, ця пісня вже в черзі.",
+  blocked: "@{displayName}, цю пісню заборонено замовляти.",
+  tooLong:
+    "@{displayName}, пісня задовга ({durationMin} хв). Максимум — {maxMin} хв.",
   voteProgress:
     "🗳️ @{displayName} за пропуск ({votes}/{needed}). Ще {left} — і пісня скіпнеться.",
   voteAlready: "@{displayName}, ти вже голосував за пропуск ({votes}/{needed}).",
@@ -118,6 +133,14 @@ export function normalizeSongRequestMessages(
     duplicate: normalizeTemplate(
       value.duplicate,
       defaultSongRequestMessages.duplicate,
+    ),
+    blocked: normalizeTemplate(
+      value.blocked,
+      defaultSongRequestMessages.blocked,
+    ),
+    tooLong: normalizeTemplate(
+      value.tooLong,
+      defaultSongRequestMessages.tooLong,
     ),
     voteProgress: normalizeTemplate(
       value.voteProgress,

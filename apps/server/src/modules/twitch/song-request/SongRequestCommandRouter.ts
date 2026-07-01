@@ -99,6 +99,18 @@ export class SongRequestCommandRouter {
         case "duplicate":
           message = this.render(messages.duplicate, { displayName });
           break;
+        case "blocked":
+          message = this.render(messages.blocked, { displayName });
+          break;
+        case "tooLong":
+          message = this.render(messages.tooLong, {
+            displayName,
+            durationSec: result.durationSec ?? 0,
+            durationMin: Math.ceil((result.durationSec ?? 0) / 60),
+            maxSec: result.maxDurationSec ?? 0,
+            maxMin: Math.ceil((result.maxDurationSec ?? 0) / 60),
+          });
+          break;
         default:
           message = this.render(messages.invalidUrl, {
             displayName,

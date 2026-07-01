@@ -31,7 +31,13 @@ type QueueState = {
 
 type RequestResult =
   | { ok: true; position?: number }
-  | { ok: false; reason?: string; secondsLeft?: number };
+  | {
+      ok: false;
+      reason?: string;
+      secondsLeft?: number;
+      durationSec?: number;
+      maxDurationSec?: number;
+    };
 
 const REASON_TEXT: Record<string, string> = {
   disabled: "Замовлення пісень зараз вимкнено.",
@@ -39,6 +45,8 @@ const REASON_TEXT: Record<string, string> = {
   queueFull: "У тебе вже максимум пісень у черзі. Зачекай, поки зіграють.",
   cooldown: "Зачекай трохи перед наступним замовленням.",
   duplicate: "Ця пісня вже в черзі.",
+  blocked: "Цю пісню заборонено замовляти.",
+  tooLong: "Пісня задовга — вибери коротшу.",
 };
 
 async function fetchQueue(): Promise<QueueState | null> {
@@ -135,12 +143,15 @@ export function PublicSongQueuePage() {
         setUrl("");
         await refresh();
       } else {
-        const base = REASON_TEXT[result.reason ?? ""] ?? "Не вдалося додати пісню.";
-        const withSeconds =
-          result.reason === "cooldown" && result.secondsLeft
-            ? `Зачекай ще ${result.secondsLeft} с перед наступним замовленням.`
-            : base;
-        setNotice({ kind: "error", text: withSeconds });
+        let text = REASON_TEXT[result.reason ?? ""] ?? "Не вдалося додати пісню.";
+        if (result.reason === "cooldown" && result.secondsLeft) {
+          text = `Зачекай ще ${result.secondsLeft} с перед наступним замовленням.`;
+        } else if (result.reason === "tooLong" && result.maxDurationSec) {
+          text = `Пісня задовга. Максимум — ${Math.ceil(
+            result.maxDurationSec / 60,
+          )} хв.`;
+        }
+        setNotice({ kind: "error", text });
       }
     } catch {
       setNotice({
