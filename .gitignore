@@ -1,0 +1,43 @@
+# ---- Dependencies ----
+node_modules/
+
+# ---- Environment / secrets (never commit real values) ----
+.env
+.env.*
+!.env.example
+
+# ---- Build output ----
+dist/
+dist-ssr/
+build/
+*.tsbuildinfo
+
+# ---- Prisma generated client ----
+apps/server/src/generated/prisma/
+
+# ---- Runtime storage (recreated by the app on start) ----
+apps/server/storage/
+
+# ---- Logs ----
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ---- Archives / build artifacts ----
+*.zip
+
+# ---- Editor / OS ----
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.local
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

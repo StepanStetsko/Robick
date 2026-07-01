@@ -1,0 +1,34 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^11.0.0",
+    "@fastify/sensible": "^6.0.0",
+    "@prisma/adapter-pg": "^7.6.0",
+    "@prisma/client": "^7.6.0",
+    "dotenv": "^16.0.0",
+    "fastify": "^5.0.0",
+    "pg": "^8.20.0",
+    "ws": "^8.20.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.0",
+    "@types/ws": "^8.18.1",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "prisma": "^7.6.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

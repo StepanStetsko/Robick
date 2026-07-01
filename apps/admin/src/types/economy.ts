@@ -1,0 +1,132 @@
+export type EconomyMessages = {
+  balanceMessage: string;
+  topTitle: string;
+  topEntry: string;
+  topEmpty: string;
+  giveSuccess: string;
+  giveInsufficient: string;
+  giveInvalidTarget: string;
+  giveInvalidAmount: string;
+  giveSelf: string;
+  buffRollWon: string;
+  buffRollCooldown: string;
+  buffRollEmpty: string;
+  buffInsufficient: string;
+  buffCatalogTitle: string;
+  buffCatalogEntry: string;
+  buffCatalogEmpty: string;
+  rouletteWin: string;
+  rouletteLose: string;
+  rouletteNoBet: string;
+  rouletteInvalidBet: string;
+  rouletteInsufficient: string;
+  rouletteLeaderMustAllIn: string;
+  rouletteLeaderTransferBlocked: string;
+  rouletteCooldown: string;
+  stealSuccess: string;
+  stealFail: string;
+  stealNoTarget: string;
+  stealSelf: string;
+  stealCooldown: string;
+  stealVictimImmune: string;
+  stealTargetUnavailable: string;
+  stealShielded: string;
+  stealTargetTooPoor: string;
+  shieldBought: string;
+  shieldAlreadyActive: string;
+  shieldInsufficient: string;
+  stealWarning: string;
+  stealDefended: string;
+  fightChallenge: string;
+  fightAccepted: string;
+  fightWin: string;
+  fightExpired: string;
+  fightInsufficient: string;
+  fightNoTarget: string;
+  fightSelf: string;
+  fightCooldown: string;
+  fightBusy: string;
+  statusMessage: string;
+  statusNone: string;
+  help: string;
+};
+
+export type EconomySettings = {
+  unit: string;
+  chatActivityPoints: number;
+  chatActivityCooldownSec: number;
+  presencePointsPerTick: number;
+  presenceIntervalMin: number;
+  lurkerReductionPercent: number;
+  lurkerInactivityMin: number;
+  balanceCommand: string;
+  topCommand: string;
+  giveCommand: string;
+  buffListCommand: string;
+  buffRollCommand: string;
+  buffRollCost: number;
+  buffRollCooldownSec: number;
+  buffRollChancePercent: number;
+  rouletteCommand: string;
+  rouletteWinChancePercent: number;
+  rouletteWinChanceMinPercent: number;
+  rouletteWinChanceMaxPercent: number;
+  roulettePayoutPercent: number;
+  rouletteCooldownSec: number;
+  rouletteLeaderLockEnabled: boolean;
+  rouletteMinBet: number;
+  rouletteMaxBet: number;
+  stealCommand: string;
+  stealChancePercent: number;
+  stealMinPercent: number;
+  stealMaxPercent: number;
+  stealMaxAmount: number;
+  stealVictimFloor: number;
+  stealThiefCooldownSec: number;
+  stealVictimImmunitySec: number;
+  stealFinePercent: number;
+  stealWarnSeconds: number;
+  shieldCommand: string;
+  shieldCost: number;
+  shieldDurationMin: number;
+  fightCommand: string;
+  fightAcceptCommand: string;
+  fightWinChancePercent: number;
+  fightCooldownSec: number;
+  fightChallengeTimeoutSec: number;
+  fightMinBet: number;
+  fightMaxBet: number;
+  statusCommand: string;
+  helpCommand: string;
+  messages: EconomyMessages;
+  updatedAt: string;
+};
+
+export type SaveEconomySettingsDto = Partial<Omit<EconomySettings, "updatedAt">>;
+
+export type Wallet = {
+  id: string;
+  twitchUserId: string;
+  userLogin: string;
+  displayName: string | null;
+  balance: number;
+  earnedTotal: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WalletEntry = Wallet & {
+  rank: number;
+};
+
+export type WalletPage = {
+  entries: WalletEntry[];
+  total: number;
+};
+
+export type AwardEconomyDto = {
+  twitchUserId: string;
+  userLogin: string;
+  displayName?: string;
+  amount: number;
+};

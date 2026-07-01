@@ -1,0 +1,372 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+model TwitchAccount {
+  id             String   @id @default(cuid())
+  providerUserId String   @unique
+  login          String
+  displayName    String
+  accountType    AccountType
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  oauthToken OAuthToken?
+}
+
+model OAuthToken {
+  id              String   @id @default(cuid())
+  twitchAccountId String   @unique
+  accessToken     String
+  refreshToken    String
+  scopes          String[]
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  twitchAccount TwitchAccount @relation(fields: [twitchAccountId], references: [id], onDelete: Cascade)
+}
+
+model Command {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  description     String?
+  enabled         Boolean  @default(true)
+  cooldownMs      Int      @default(0)
+  allowedRoles    String[]
+  unrealEventName String
+  payloadTemplate Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model RewardMapping {
+  id              String   @id @default(cuid())
+  rewardId        String   @unique
+  rewardTitle     String
+  enabled         Boolean  @default(true)
+  unrealEventName String?
+  unityEventName  String?
+  targetTransports String[] @default(["unreal"])
+  payloadTemplate Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model EventLog {
+  id                String   @id @default(cuid())
+  source            String
+  sourceEventType   String
+  rawPayload        Json?
+  normalizedPayload Json?
+  deliveryStatus    String?
+  errorMessage      String?
+  createdAt         DateTime @default(now())
+}
+
+model ViewerFunStat {
+  id            String   @id @default(cuid())
+  featureKey    String
+  twitchUserId  String
+  userLogin     String
+  displayName   String?
+  score         Int      @default(0)
+  rollsCount    Int      @default(0)
+  lastDelta     Int?
+  lastDirection String?
+  lastMessage   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([featureKey, twitchUserId])
+  @@index([featureKey, score])
+  @@index([featureKey, updatedAt])
+}
+
+model FunMeterFeature {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  title           String
+  unit            String   @default("см")
+  enabled         Boolean  @default(true)
+  aliases         String[]
+  leaderboardArgs String[]
+  selfArgs        String[]
+  rollLimitMode   String   @default("daily")
+  increaseChance  Float    @default(0.6)
+  minRoll         Int      @default(1)
+  maxRoll         Int      @default(20)
+  jokes           Json
+  messages        Json
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([enabled])
+}
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+
+model ViewerWallet {
+  id           String   @id @default(cuid())
+  twitchUserId String   @unique
+  userLogin    String
+  displayName  String?
+  balance      Int      @default(0)
+  earnedTotal  Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([balance])
+}
+
+// Persisted "who's on stream" log. One row per viewer for the current local
+// day (`day` = YYYY-MM-DD); rows from previous days are deleted at local
+// midnight so each day starts fresh. Loaded into PresenceLogService's
+// in-memory cache on runtime start so the log survives process restarts.
+model ViewerPresence {
+  id           String    @id @default(cuid())
+  twitchUserId String    @unique
+  userLogin    String
+  displayName  String
+  day          String
+  firstSeenAt  DateTime
+  lastSeenAt   DateTime
+  presentNow   Boolean   @default(false)
+  hasChatted   Boolean   @default(false)
+  messageCount Int       @default(0)
+  lastChatAt   DateTime?
+  updatedAt    DateTime  @updatedAt
+
+  @@index([day])
+}
+
+// Song-request queue: viewers order YouTube songs via the chat command (and
+// later the site / donations); an OBS overlay plays them in order. priority>0
+// jumps ahead of normal requests (reserved for donation requests, phase 2).
+model SongRequest {
+  id           String    @id @default(cuid())
+  videoId      String
+  url          String
+  title        String?
+  durationSec  Int?
+  thumbnailUrl String?
+  requestedBy  String
+  requesterId  String?
+  source       String    @default("chat") // chat | site | donation
+  priority     Int       @default(0)
+  status       String    @default("queued") // queued | playing | played | skipped
+  createdAt    DateTime  @default(now())
+  playedAt     DateTime?
+
+  @@index([status, priority, createdAt])
+}
+
+model SongRequestSettings {
+  id                 String   @id @default(cuid())
+  key                String   @unique @default("song_request")
+  command            String   @default("пісня")
+  enabled            Boolean  @default(true)
+  maxQueuePerUser    Int      @default(2)
+  maxDurationSec     Int      @default(0) // 0 = без ліміту (потребує YouTube Data API)
+  perUserCooldownSec Int      @default(0)
+  voteSkipCommand    String   @default("скіп")
+  pauseCommand       String   @default("пауза")
+  skipVotesNeeded    Int      @default(5)
+  messages           Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model GiveawaySettings {
+  id                 String   @id @default(cuid())
+  key                String   @unique @default("giveaway")
+  joinKeyword        String   @default("участь")
+  selfCommand        String   @default("розіграшсвоїх")
+  maxAmount          Int      @default(100000)
+  durationSeconds    Int      @default(30)
+  reminderMinSeconds Int      @default(7)
+  reminderMaxSeconds Int      @default(10)
+  presets            Json?
+  messages           Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model GuessGameSettings {
+  id                 String   @id @default(cuid())
+  key                String   @unique @default("guess")
+  command            String   @default("цифри")
+  stopCommand        String   @default("стопцифри")
+  reward             Int      @default(100)
+  maxRange           Int      @default(1000000)
+  maxDurationSeconds Int      @default(3600)
+  messages           Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+model BuffDefinition {
+  id            String   @id @default(cuid())
+  key           String   @unique
+  title         String
+  description   String   @default("")
+  kind          String   @default("buff")
+  effectType    String   @default("chance")
+  magnitude     Float    @default(0)
+  durationMode  String   @default("time")
+  durationValue Int      @default(10)
+  cost          Int      @default(100)
+  target        String   @default("self")
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ViewerProtection {
+  id           String   @id @default(cuid())
+  twitchUserId String   @unique
+  userLogin    String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([expiresAt])
+}
+
+model ActiveBuff {
+  id             String    @id @default(cuid())
+  twitchUserId   String
+  userLogin      String
+  buffKey        String
+  title          String
+  kind           String    @default("buff")
+  effectType     String
+  magnitude      Float
+  durationMode   String
+  expiresAt      DateTime?
+  rollsRemaining Int?
+  source         String    @default("purchase")
+  createdAt      DateTime  @default(now())
+
+  @@index([twitchUserId])
+}
+
+model EconomySettings {
+  id                      String   @id @default(cuid())
+  key                     String   @unique @default("economy")
+  unit                    String   @default("балів")
+  chatActivityPoints      Int      @default(5)
+  chatActivityCooldownSec Int      @default(60)
+  presencePointsPerTick   Int      @default(10)
+  presenceIntervalMin     Int      @default(5)
+  lurkerReductionPercent  Int      @default(50)
+  lurkerInactivityMin     Int      @default(5)
+  balanceCommand          String   @default("баланс")
+  topCommand              String   @default("топ")
+  giveCommand             String   @default("передати")
+  buffBuyCommand          String   @default("купити")
+  buffListCommand         String   @default("бафи")
+  buffRollCommand         String   @default("ефект")
+  buffRollCost            Int      @default(100)
+  buffRollCooldownSec     Int      @default(60)
+  buffRollChancePercent   Int      @default(50)
+  rouletteCommand         String   @default("рулетка")
+  rouletteWinChancePercent Int     @default(50)
+  rouletteWinChanceMinPercent Int  @default(40)
+  rouletteWinChanceMaxPercent Int  @default(55)
+  roulettePayoutPercent   Int      @default(100)
+  rouletteCooldownSec     Int      @default(30)
+  rouletteLeaderLockEnabled Boolean @default(true)
+  rouletteMinBet          Int      @default(10)
+  rouletteMaxBet          Int      @default(0)
+  stealCommand            String   @default("вкрасти")
+  stealChancePercent      Int      @default(50)
+  stealMinPercent         Int      @default(5)
+  stealMaxPercent         Int      @default(15)
+  stealMaxAmount          Int      @default(1000)
+  stealVictimFloor        Int      @default(50)
+  stealThiefCooldownSec   Int      @default(300)
+  stealVictimImmunitySec  Int      @default(600)
+  stealFinePercent        Int      @default(10)
+  stealWarnSeconds        Int      @default(30)
+  shieldCommand           String   @default("щит")
+  shieldCost              Int      @default(500)
+  shieldDurationMin       Int      @default(30)
+  fightCommand            String   @default("бійка")
+  fightAcceptCommand      String   @default("приймаю")
+  fightWinChancePercent   Int      @default(50)
+  fightCooldownSec        Int      @default(60)
+  fightChallengeTimeoutSec Int     @default(60)
+  fightMinBet             Int      @default(10)
+  fightMaxBet             Int      @default(0)
+  statusCommand           String   @default("профіль")
+  helpCommand             String   @default("команди")
+  messages                Json?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+// Perk-tier configuration. Tiers are guest / loyal (free, earned via a
+// presence streak) / supporter (paid — manual allowlist now, mono subscription
+// later). Every perk number lives here so it's editable in the admin panel;
+// per-viewer tier state lives in SupporterStatus.
+model SupporterSettings {
+  id                        String   @id @default(cuid())
+  key                       String   @unique @default("supporter")
+  enabled                   Boolean  @default(true)
+  loyalStreakDays           Int      @default(5)
+  streakResetOnMissedStream Boolean  @default(true)
+  loyalMultiplier           Float    @default(1.5)
+  supporterMultiplier       Float    @default(2.5)
+  bonusCommand              String   @default("бонус")
+  bonusCooldownSec          Int      @default(86400)
+  guestDailyBonus           Int      @default(50)
+  loyalDailyBonus           Int      @default(150)
+  supporterDailyBonus       Int      @default(400)
+  guestStreakBonus          Int      @default(10)
+  loyalStreakBonus          Int      @default(25)
+  supporterStreakBonus      Int      @default(60)
+  supporterSongPriority     Int      @default(1)
+  messages                  Json?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+}
+
+// Per-viewer perk state, keyed by login so a supporter can be added manually
+// before a wallet exists (mirrors award-by-login). `manualTier`/`manualUntil`
+// are the admin-managed supporter allowlist (the stub); `monoSubId`/`monoUntil`
+// get filled by the monobank subscription webhook later (phase 2). Streak
+// fields drive the free `loyal` tier.
+model SupporterStatus {
+  id            String    @id @default(cuid())
+  userLogin     String    @unique
+  twitchUserId  String?
+  displayName   String?
+  manualTier    String? // null | "supporter"
+  manualUntil   DateTime?
+  monoSubId     String?
+  monoUntil     DateTime?
+  streakDays    Int       @default(0)
+  lastStreamDay String? // YYYY-MM-DD of last counted stream day
+  lastBonusAt   DateTime? // last daily-bonus claim (cooldown)
+  note          String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([manualTier])
+}
+
+enum AccountType {
+  broadcaster
+  bot
+}
+

@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RobikServer Admin — макет «Економіка» (refined dark)</title>
+    <style>
+      /* ===== Design tokens (refined dark) ===== */
+      :root {
+        --bg: #0e1014;
+        --bg-grad-1: #15171f;
+        --bg-grad-2: #0c0e12;
+        --panel: #15181f;
+        --panel-2: #1b1f29;
+        --panel-3: #20252f;
+        --border: #262d3a;
+        --border-soft: #1f2530;
+        --text: #e9edf4;
+        --muted: #8b95a6;
+        --muted-2: #6b7585;
+        --primary: #7c5cff;
+        --primary-2: #9b7bff;
+        --primary-soft: rgba(124, 92, 255, 0.14);
+        --primary-border: rgba(124, 92, 255, 0.45);
+        --success: #2da66d;
+        --success-soft: rgba(45, 166, 109, 0.16);
+        --warning: #d7a941;
+        --warning-soft: rgba(215, 169, 65, 0.16);
+        --danger: #e0625e;
+        --danger-soft: rgba(217, 83, 79, 0.14);
+        --radius: 16px;
+        --radius-sm: 11px;
+        --shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+        --shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.25);
+        --ring: 0 0 0 3px rgba(124, 92, 255, 0.25);
+      }
+
+      * { box-sizing: border-box; margin: 0; }
+      html, body { min-height: 100%; }
+      body {
+        font-family: Inter, system-ui, Arial, sans-serif;
+        line-height: 1.5;
+        color: var(--text);
+        background:
+          radial-gradient(1200px 600px at 80% -10%, #1a1d27 0%, transparent 55%),
+          radial-gradient(900px 500px at -10% 110%, #161922 0%, transparent 50%),
+          var(--bg);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* ===== Shell ===== */
+      .app-shell { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
+
+      /* ===== Sidebar ===== */
+      .sidebar {
+        border-right: 1px solid var(--border-soft);
+        background: linear-gradient(180deg, #14171e 0%, #0f1218 100%);
+        padding: 22px 14px;
+        display: flex; flex-direction: column; gap: 24px;
+      }
+      .sidebar__brand {
+        display: flex; align-items: center; gap: 10px;
+        font-size: 16px; font-weight: 700; letter-spacing: 0.2px;
+        padding: 4px 8px 0;
+      }
+      .brand-mark {
+        width: 28px; height: 28px; border-radius: 9px;
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-2) 100%);
+        display: grid; place-items: center;
+        font-size: 15px; box-shadow: 0 4px 14px rgba(124, 92, 255, 0.45);
+      }
+      .sidebar__nav { display: flex; flex-direction: column; gap: 20px; }
+      .sidebar__section { display: flex; flex-direction: column; gap: 3px; }
+      .sidebar__section-title {
+        font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+        letter-spacing: 0.09em; color: var(--muted-2); padding: 0 12px 5px;
+      }
+      .sidebar__link {
+        position: relative;
+        display: flex; align-items: center; gap: 10px;
+        padding: 9px 12px; border-radius: var(--radius-sm);
+        color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500;
+        transition: 0.15s ease;
+      }
+      .sidebar__link .ico { width: 16px; opacity: 0.85; text-align: center; }
+      .sidebar__link:hover { background: rgba(255, 255, 255, 0.035); color: var(--text); }
+      .sidebar__link--active {
+        color: #fff; font-weight: 600;
+        background: linear-gradient(90deg, var(--primary-soft) 0%, rgba(124, 92, 255, 0.04) 100%);
+      }
+      .sidebar__link--active::before {
+        content: ""; position: absolute; left: 0; top: 7px; bottom: 7px; width: 3px;
+        border-radius: 3px; background: linear-gradient(180deg, var(--primary), var(--primary-2));
+        box-shadow: 0 0 12px var(--primary);
+      }
+
+      /* ===== Main / header ===== */
+      .app-main { display: flex; flex-direction: column; min-width: 0; }
+      .header {
+        padding: 20px 30px; border-bottom: 1px solid var(--border-soft);
+        background: rgba(14, 16, 20, 0.6); backdrop-filter: blur(8px);
+        display: flex; justify-content: space-between; align-items: center; gap: 20px;
+        position: sticky; top: 0; z-index: 5;
+      }
+      .page-title { font-size: 22px; font-weight: 700; }
+      .page-subtitle { color: var(--muted); margin-top: 2px; font-size: 13px; }
+      .header__status { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+
+      .badge {
+        display: inline-flex; align-items: center; gap: 6px;
+        border-radius: 999px; border: 1px solid var(--border);
+        padding: 5px 11px; font-size: 12px; line-height: 1; font-weight: 500;
+        background: var(--panel-2); color: var(--muted);
+      }
+      .badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+      .badge--success { color: #87e0ad; border-color: rgba(45, 166, 109, 0.4); background: var(--success-soft); }
+      .badge--warning { color: #f0d18a; border-color: rgba(215, 169, 65, 0.4); background: var(--warning-soft); }
+      .badge--muted { color: var(--muted); }
+      .user-chip {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 4px 10px 4px 4px; border-radius: 999px; border: 1px solid var(--border);
+        background: var(--panel-2); font-size: 13px;
+      }
+      .avatar { width: 24px; height: 24px; border-radius: 50%;
+        background: linear-gradient(135deg, #6d4ef0, #b79bff); display: grid; place-items: center;
+        font-size: 12px; font-weight: 700; color: #fff; }
+
+      .app-content { padding: 26px 30px 60px; }
+
+      /* ===== Card ===== */
+      .card {
+        background: linear-gradient(180deg, var(--panel) 0%, #121620 100%);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 22px;
+        box-shadow: var(--shadow);
+        position: relative;
+      }
+      .card::after {
+        content: ""; position: absolute; inset: 0 0 auto 0; height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+        border-radius: var(--radius) var(--radius) 0 0;
+      }
+      .card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+      .card__title { font-size: 18px; font-weight: 700; }
+      .card__subtitle { margin-top: 5px; color: var(--muted); font-size: 13.5px; max-width: 60ch; }
+
+      /* ===== Tabs (pill) ===== */
+      .tabs__nav {
+        display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 22px;
+        padding: 5px; border-radius: 13px;
+        background: var(--panel-2); border: 1px solid var(--border-soft);
+        width: fit-content;
+      }
+      .tab-button {
+        border: 1px solid transparent; border-radius: 9px; background: transparent;
+        color: var(--muted); padding: 8px 15px; font-size: 13.5px; font-weight: 600;
+        cursor: pointer; transition: 0.15s ease; font-family: inherit; display: inline-flex; align-items: center; gap: 7px;
+      }
+      .tab-button .count { font-size: 11px; color: var(--muted-2); background: rgba(255,255,255,0.05);
+        border-radius: 999px; padding: 1px 7px; }
+      .tab-button:hover { color: var(--text); }
+      .tab-button--active {
+        color: #fff;
+        background: linear-gradient(180deg, var(--primary) 0%, var(--primary-2) 100%);
+        box-shadow: 0 6px 16px rgba(124, 92, 255, 0.4);
+      }
+      .tab-button--active .count { color: #fff; background: rgba(255,255,255,0.18); }
+
+      .tab-panel__intro {
+        color: var(--muted); font-size: 13.5px; margin-bottom: 20px;
+        padding: 12px 14px; border-radius: var(--radius-sm);
+        background: var(--primary-soft); border: 1px solid var(--primary-border);
+      }
+
+      /* ===== Section group ===== */
+      .group { margin-top: 26px; }
+      .group:first-of-type { margin-top: 0; }
+      .group__title {
+        font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em;
+        color: var(--muted-2); margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
+      }
+      .group__title::after { content: ""; flex: 1; height: 1px; background: var(--border-soft); }
+
+      /* ===== Fields ===== */
+      .grid { display: grid; gap: 16px; }
+      .grid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .field { display: grid; gap: 7px; }
+      .field__label { font-size: 13px; color: var(--muted); font-weight: 500; }
+      .field__input {
+        width: 100%; border: 1px solid var(--border); border-radius: var(--radius-sm);
+        background: #0c0f15; color: var(--text); padding: 11px 13px; outline: none;
+        font-size: 14px; font-family: inherit; transition: 0.15s ease;
+      }
+      .field__input:focus { border-color: var(--primary); box-shadow: var(--ring); background: #0d1118; }
+      .field__input::placeholder { color: var(--muted-2); }
+      .field__prefix { position: relative; }
+      .field__prefix .pfx { position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+        color: var(--muted-2); font-size: 14px; pointer-events: none; }
+      .field__prefix .field__input { padding-left: 26px; }
+      .field__hint { color: var(--muted-2); font-size: 12px; }
+
+      .switch-row {
+        display: flex; align-items: center; gap: 14px; padding: 14px 16px; margin-top: 18px;
+        border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2);
+      }
+      .switch {
+        width: 42px; height: 24px; border-radius: 999px; background: var(--primary);
+        position: relative; flex: none; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.1);
+      }
+      .switch::after { content: ""; position: absolute; top: 3px; left: 21px; width: 18px; height: 18px;
+        border-radius: 50%; background: #fff; transition: 0.15s; }
+      .switch-row__text { font-size: 13.5px; color: var(--text); }
+      .switch-row__text small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+      /* ===== Footer / buttons ===== */
+      .form__footer {
+        display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+        margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--border-soft);
+      }
+      .button {
+        border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--panel-2);
+        color: var(--text); padding: 11px 18px; cursor: pointer; font-size: 14px; font-weight: 600;
+        font-family: inherit; transition: 0.15s ease;
+      }
+      .button--primary {
+        background: linear-gradient(180deg, var(--primary) 0%, var(--primary-2) 100%);
+        border-color: var(--primary); color: #fff; box-shadow: 0 8px 20px rgba(124, 92, 255, 0.35);
+      }
+      .button--primary:hover { transform: translateY(-1px); box-shadow: 0 12px 26px rgba(124, 92, 255, 0.45); }
+      .button--ghost:hover { background: var(--panel-3); }
+      .saved-hint { margin-left: auto; color: #87e0ad; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+
+      @media (max-width: 980px) {
+        .app-shell { grid-template-columns: 1fr; }
+        .sidebar { display: none; }
+        .grid--2, .grid--3 { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <span class="brand-mark">⚡</span>
+          <span>Twitch Admin</span>
+        </div>
+
+        <nav class="sidebar__nav">
+          <div class="sidebar__section">
+            <div class="sidebar__section-title">Огляд</div>
+            <a class="sidebar__link"><span class="ico">▦</span> Дашборд</a>
+            <a class="sidebar__link"><span class="ico">◷</span> Runtime</a>
+            <a class="sidebar__link"><span class="ico">◉</span> Хто на стрімі</a>
+          </div>
+          <div class="sidebar__section">
+            <div class="sidebar__section-title">Економіка та ігри</div>
+            <a class="sidebar__link sidebar__link--active"><span class="ico">◈</span> Економіка</a>
+            <a class="sidebar__link"><span class="ico">✦</span> Бафи</a>
+            <a class="sidebar__link"><span class="ico">☺</span> Fun Meter</a>
+            <a class="sidebar__link"><span class="ico">?</span> Вгадай число</a>
+            <a class="sidebar__link"><span class="ico">🎁</span> Розіграш</a>
+          </div>
+          <div class="sidebar__section">
+            <div class="sidebar__section-title">Команди</div>
+            <a class="sidebar__link"><span class="ico">⌘</span> Команди</a>
+            <a class="sidebar__link"><span class="ico">📖</span> Довідник</a>
+          </div>
+          <div class="sidebar__section">
+            <div class="sidebar__section-title">Система</div>
+            <a class="sidebar__link"><span class="ico">⚿</span> Авторизація</a>
+            <a class="sidebar__link"><span class="ico">★</span> Бали каналу</a>
+            <a class="sidebar__link"><span class="ico">▷</span> Симуляція</a>
+            <a class="sidebar__link"><span class="ico">⚙</span> Налаштування</a>
+          </div>
+        </nav>
+      </aside>
+
+      <!-- Main -->
+      <div class="app-main">
+        <header class="header">
+          <div>
+            <div class="page-title">Економіка</div>
+            <div class="page-subtitle">Панель керування Twitch-інтеграцією</div>
+          </div>
+          <div class="header__status">
+            <span class="badge badge--success"><span class="dot"></span> Realtime</span>
+            <span class="badge badge--success"><span class="dot"></span> Стрімер</span>
+            <span class="badge badge--warning"><span class="dot"></span> Бот</span>
+            <span class="user-chip"><span class="avatar">R</span> robik_streamer</span>
+            <button class="button button--ghost">Вийти</button>
+          </div>
+        </header>
+
+        <main class="app-content">
+          <div class="card">
+            <div class="card__header">
+              <div>
+                <div class="card__title">Налаштування економіки</div>
+                <div class="card__subtitle">Розбито на вкладки. Кнопка «Зберегти» застосовує всі вкладки одразу.</div>
+              </div>
+            </div>
+
+            <div class="tabs__nav">
+              <button class="tab-button tab-button--active">Нарахування</button>
+              <button class="tab-button">Рулетка</button>
+              <button class="tab-button">Крадіжка та щит</button>
+              <button class="tab-button">Бійки</button>
+              <button class="tab-button">Бафи</button>
+              <button class="tab-button">Повідомлення <span class="count">42</span></button>
+              <button class="tab-button">Гаманці</button>
+            </div>
+
+            <div class="tab-panel__intro">
+              Валюта, пасивний заробіток (чат + присутність), люркер і базові команди.
+            </div>
+
+            <div class="group">
+              <div class="group__title">Валюта</div>
+              <div class="field">
+                <span class="field__label">Одиниця (валюта)</span>
+                <input class="field__input" value="балів" />
+              </div>
+            </div>
+
+            <div class="group">
+              <div class="group__title">Пасивний заробіток</div>
+              <div class="grid grid--2">
+                <div class="field">
+                  <span class="field__label">Балів за повідомлення</span>
+                  <input class="field__input" type="number" value="5" />
+                </div>
+                <div class="field">
+                  <span class="field__label">Кулдаун чату (сек)</span>
+                  <input class="field__input" type="number" value="60" />
+                </div>
+                <div class="field">
+                  <span class="field__label">Балів за тік присутності</span>
+                  <input class="field__input" type="number" value="2" />
+                </div>
+                <div class="field">
+                  <span class="field__label">Інтервал присутності (хв)</span>
+                  <input class="field__input" type="number" value="10" />
+                </div>
+              </div>
+            </div>
+
+            <div class="group">
+              <div class="group__title">Люркер</div>
+              <div class="grid grid--2">
+                <div class="field">
+                  <span class="field__label">Урізання люркера (%)</span>
+                  <input class="field__input" type="number" value="50" />
+                </div>
+                <div class="field">
+                  <span class="field__label">Вікно бездіяльності (хв)</span>
+                  <input class="field__input" type="number" value="15" />
+                </div>
+              </div>
+            </div>
+
+            <div class="group">
+              <div class="group__title">Базові команди</div>
+              <div class="grid grid--2">
+                <div class="field">
+                  <span class="field__label">Команда балансу</span>
+                  <div class="field__prefix"><span class="pfx">!</span><input class="field__input" value="баланс" /></div>
+                </div>
+                <div class="field">
+                  <span class="field__label">Команда топу</span>
+                  <div class="field__prefix"><span class="pfx">!</span><input class="field__input" value="топ" /></div>
+                </div>
+                <div class="field">
+                  <span class="field__label">Команда передачі</span>
+                  <div class="field__prefix"><span class="pfx">!</span><input class="field__input" value="передати" /></div>
+                </div>
+                <div class="field">
+                  <span class="field__label">Команда профілю</span>
+                  <div class="field__prefix"><span class="pfx">!</span><input class="field__input" value="профіль" /></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="form__footer">
+              <button class="button button--primary">Зберегти</button>
+              <button class="button button--ghost">Скасувати зміни</button>
+              <span class="saved-hint">✓ Збережено о 14:32</span>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>
