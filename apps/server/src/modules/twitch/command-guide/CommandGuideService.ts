@@ -5,6 +5,8 @@ import type { EconomyService } from "../economy/EconomyService.js";
 import type { FunMeterService } from "../fun-meter/FunMeterService.js";
 import type { GiveawayService } from "../giveaway/GiveawayService.js";
 import type { GuessGameService } from "../guess/GuessGameService.js";
+import type { SongQueueService } from "../song-request/SongQueueService.js";
+import type { SupporterService } from "../supporter/SupporterService.js";
 import {
   COMMAND_GUIDE_KEY,
   saveCommandGuideSchema,
@@ -23,6 +25,8 @@ export class CommandGuideService {
     private readonly funMeterService: FunMeterService,
     private readonly giveawayService: GiveawayService,
     private readonly guessGameService: GuessGameService,
+    private readonly songQueueService: SongQueueService,
+    private readonly supporterService: SupporterService,
     private readonly db: PrismaClient = prisma,
   ) {}
 
@@ -75,12 +79,15 @@ export class CommandGuideService {
   }
 
   async generateFromSettings(): Promise<GuideGroup[]> {
-    const [economy, features, giveaway, guess] = await Promise.all([
-      this.economyService.getSettings(),
-      this.funMeterService.listFeatures(),
-      this.giveawayService.getSettings(),
-      this.guessGameService.getSettings(),
-    ]);
+    const [economy, features, giveaway, guess, song, supporter] =
+      await Promise.all([
+        this.economyService.getSettings(),
+        this.funMeterService.listFeatures(),
+        this.giveawayService.getSettings(),
+        this.guessGameService.getSettings(),
+        this.songQueueService.getSettings(),
+        this.supporterService.getSettings(),
+      ]);
 
     const groups: GuideGroup[] = [];
 
@@ -212,6 +219,39 @@ export class CommandGuideService {
         },
       ],
     });
+
+    if (song.enabled) {
+      groups.push({
+        title: "Пісні",
+        rows: [
+          {
+            command: `!${song.command} <youtube>`,
+            description: "Замовити пісню в чергу (грає у стрімі)",
+          },
+          {
+            command: `!${song.voteSkipCommand}`,
+            description: `Проголосувати за пропуск поточної (треба ${song.skipVotesNeeded}); моди/стрімер — миттєвий скіп`,
+          },
+          {
+            command: `!${song.pauseCommand}`,
+            description: "Пауза / відновлення (тільки модератор / стрімер)",
+          },
+        ],
+      });
+    }
+
+    if (supporter.enabled) {
+      groups.push({
+        title: "Перки",
+        rows: [
+          {
+            command: `!${supporter.bonusCommand}`,
+            description:
+              "Щоденний бонус за рівень (loyal / supporter) + додатковий бонус за стрік присутності",
+          },
+        ],
+      });
+    }
 
     return groups;
   }

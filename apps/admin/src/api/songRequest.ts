@@ -49,6 +49,24 @@ export async function addSong(url: string): Promise<SongRequestEntry> {
   return result.data;
 }
 
+export async function getSongHistory(): Promise<SongRequestEntry[]> {
+  const result = await http<ApiResponse<SongRequestEntry[]>>(
+    "/api/twitch/song-request/history",
+    { method: "GET" },
+  );
+
+  return result.data;
+}
+
+export async function playPreviousSong(): Promise<SongQueueState> {
+  const result = await http<ApiResponse<SongQueueState>>(
+    "/api/twitch/song-request/previous",
+    { method: "POST" },
+  );
+
+  return result.data;
+}
+
 export async function skipCurrentSong(): Promise<SongQueueState> {
   const result = await http<ApiResponse<SongQueueState>>(
     "/api/twitch/song-request/skip",

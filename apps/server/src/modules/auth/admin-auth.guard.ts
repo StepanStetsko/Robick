@@ -28,6 +28,9 @@ const PUBLIC_PATHS = new Set<string>([
   "/api/public/song-queue/current",
   "/api/public/song-queue/advance",
   "/api/public/song-queue/state",
+  // Public song-queue page: recent history + viewer add-a-song form.
+  "/api/public/song-queue/history",
+  "/api/public/song-queue/request",
 ]);
 
 function isPublic(request: FastifyRequest) {

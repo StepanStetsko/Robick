@@ -1737,6 +1737,20 @@ app.post<{
     };
   });
 
+  app.post("/twitch/song-request/previous", async () => {
+    return {
+      ok: true,
+      data: await twitchRuntimeContainer.songQueueService.playPrevious(),
+    };
+  });
+
+  app.get("/twitch/song-request/history", async () => {
+    return {
+      ok: true,
+      data: await twitchRuntimeContainer.songQueueService.getHistory(30),
+    };
+  });
+
   app.delete<{
     Params: { id: string };
   }>("/twitch/song-request/:id", async (request) => {
@@ -1937,6 +1951,35 @@ app.post<{
       ok: true,
       data: await twitchRuntimeContainer.songQueueService.advance(),
     };
+  });
+
+  // Recently played/skipped tracks (public queue page history section).
+  app.get("/public/song-queue/history", async () => {
+    return {
+      ok: true,
+      data: await twitchRuntimeContainer.songQueueService.getHistory(20),
+    };
+  });
+
+  // Public site form: a viewer adds a song by typing a name + YouTube link.
+  app.post<{
+    Body: { url?: string; name?: string };
+  }>("/public/song-queue/request", async (request, reply) => {
+    const result = await twitchRuntimeContainer.songQueueService.enqueueFromSite(
+      request.body?.url ?? "",
+      request.body?.name ?? "",
+    );
+
+    if (!result.ok) {
+      reply.code(400);
+      return {
+        ok: false,
+        reason: result.reason,
+        secondsLeft: result.secondsLeft,
+      };
+    }
+
+    return { ok: true, data: result.entry, position: result.position };
   });
 }
 

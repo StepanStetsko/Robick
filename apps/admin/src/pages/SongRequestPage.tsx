@@ -2,8 +2,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   addSong,
   clearSongQueue,
+  getSongHistory,
   getSongQueue,
   getSongRequestSettings,
+  playPreviousSong,
   removeSong,
   skipCurrentSong,
   togglePauseSong,
@@ -18,7 +20,7 @@ import type {
   SongRequestSettings,
 } from "../types/songRequest";
 
-type TabId = "queue" | "settings" | "messages";
+type TabId = "queue" | "history" | "settings" | "messages";
 
 type FormState = {
   command: string;
@@ -79,17 +81,27 @@ export function SongRequestPage() {
   const [error, setError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"overlay" | "page" | null>(null);
+  const [history, setHistory] = useState<SongRequestEntry[]>([]);
 
   const overlayUrl = `${window.location.origin}/overlay/player`;
+  const publicPageUrl = `${window.location.origin}/songs`;
 
-  async function copyOverlayUrl() {
+  async function copyUrl(which: "overlay" | "page", value: string) {
     try {
-      await navigator.clipboard.writeText(overlayUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      await navigator.clipboard.writeText(value);
+      setCopied(which);
+      setTimeout(() => setCopied(null), 1500);
     } catch {
       // clipboard unavailable — user can still copy manually
+    }
+  }
+
+  async function loadHistory() {
+    try {
+      setHistory(await getSongHistory());
+    } catch {
+      // non-critical — history stays as-is
     }
   }
 
@@ -101,6 +113,7 @@ export function SongRequestPage() {
       ]);
       setForm(settingsToForm(settings));
       setState(queue);
+      void loadHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося завантажити");
     } finally {
@@ -112,7 +125,11 @@ export function SongRequestPage() {
     void load();
 
     const unsubscribe = subscribeToTwitchRealtime({
-      onSongQueueChanged: (data) => setState(data),
+      onSongQueueChanged: (data) => {
+        setState(data);
+        // A track change usually means something moved into history.
+        void loadHistory();
+      },
     });
 
     return () => unsubscribe();
@@ -162,6 +179,19 @@ export function SongRequestPage() {
       setState(await action());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Помилка");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function readdSong(url: string) {
+    setBusy(true);
+    setError(null);
+
+    try {
+      await addSong(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не вдалося додати пісню");
     } finally {
       setBusy(false);
     }
@@ -225,6 +255,7 @@ export function SongRequestPage() {
         <div className="tabs__nav" role="tablist">
           {([
             ["queue", "Черга"],
+            ["history", "Історія"],
             ["settings", "Налаштування"],
             ["messages", "Повідомлення"],
           ] as [TabId, string][]).map(([id, label]) => (
@@ -267,6 +298,15 @@ export function SongRequestPage() {
             </form>
 
             <div className="actions" style={{ marginTop: 16 }}>
+              <button
+                className="button button--ghost"
+                type="button"
+                onClick={() => void runQueueAction(playPreviousSong)}
+                disabled={busy || history.length === 0}
+                title="Повернути попередню пісню (поточна піде в чергу)"
+              >
+                ⏮ Попередня
+              </button>
               <button
                 className="button button--ghost"
                 type="button"
@@ -317,9 +357,32 @@ export function SongRequestPage() {
                 <button
                   className="button button--ghost button--small"
                   type="button"
-                  onClick={() => void copyOverlayUrl()}
+                  onClick={() => void copyUrl("overlay", overlayUrl)}
                 >
-                  {copied ? "Скопійовано ✓" : "Копіювати адресу"}
+                  {copied === "overlay" ? "Скопійовано ✓" : "Копіювати адресу"}
+                </button>
+              </div>
+
+              <p className="tab-panel__intro">
+                Публічна сторінка черги для глядачів (перегляд + додати свою
+                пісню) — можна кинути в опис стріму:
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  marginBottom: 14,
+                }}
+              >
+                <code>{publicPageUrl}</code>
+                <button
+                  className="button button--ghost button--small"
+                  type="button"
+                  onClick={() => void copyUrl("page", publicPageUrl)}
+                >
+                  {copied === "page" ? "Скопійовано ✓" : "Копіювати адресу"}
                 </button>
               </div>
               <div
@@ -391,7 +454,63 @@ export function SongRequestPage() {
           </>
         ) : null}
 
-        {form && activeTab !== "queue" ? (
+        {activeTab === "history" ? (
+          <div className="command-ref__group">
+            <h3 className="command-ref__group-title">
+              Історія ({history.length})
+            </h3>
+            <p className="tab-panel__intro">
+              Нещодавно зіграні та пропущені пісні. «↻ У чергу» — додати знову.
+            </p>
+            {history.length === 0 ? (
+              <div className="state-block">Ще нічого не грало</div>
+            ) : (
+              <div className="table-wrap">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>пісня</th>
+                      <th>замовив</th>
+                      <th>статус</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {history.map((entry) => (
+                      <tr key={entry.id}>
+                        <td>
+                          <strong>{entry.title || entry.videoId}</strong>
+                          <span className="table-muted">{entry.url}</span>
+                        </td>
+                        <td>{entry.requestedBy}</td>
+                        <td>
+                          {entry.status === "skipped" ? (
+                            <span className="badge badge--warning">пропущено</span>
+                          ) : (
+                            <span className="badge badge--muted">зіграно</span>
+                          )}
+                        </td>
+                        <td>
+                          <button
+                            className="button button--ghost button--small"
+                            type="button"
+                            onClick={() => void readdSong(entry.url)}
+                            disabled={busy}
+                            title="Додати цю пісню знову в чергу"
+                          >
+                            ↻ У чергу
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        {form && (activeTab === "settings" || activeTab === "messages") ? (
           <form className="form" onSubmit={handleSave}>
             {activeTab === "settings" ? (
               <>

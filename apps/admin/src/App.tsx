@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { RequireAuth } from "./components/auth/AuthContext";
 import { AdminLayout } from "./components/layout/AdminLayout";
 import { PublicGuidePage } from "./pages/PublicGuidePage";
+import { PublicSongQueuePage } from "./pages/PublicSongQueuePage";
 import { OverlayPlayerPage } from "./pages/OverlayPlayerPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { RuntimePage } from "./pages/RuntimePage";
@@ -23,6 +24,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/guide" element={<PublicGuidePage />} />
+      <Route path="/songs" element={<PublicSongQueuePage />} />
       <Route path="/overlay/player" element={<OverlayPlayerPage />} />
 
       <Route

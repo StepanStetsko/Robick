@@ -159,6 +159,51 @@ export class SongQueueService {
     return { ok: true, entry: toDto(row), position };
   }
 
+  /** Recently played/skipped tracks, newest first (for the history views). */
+  async getHistory(limit = 20): Promise<SongRequestDto[]> {
+    const rows = await this.repo.listHistory(limit);
+    return rows.map(toDto);
+  }
+
+  /**
+   * Public site form: enqueue by a typed name (no Twitch id). The name doubles
+   * as a pseudo requester id (`site:<slug>`) so the per-user queue limit and
+   * cooldown still apply to the same person.
+   */
+  async enqueueFromSite(
+    url: string,
+    requestedByRaw: string,
+  ): Promise<EnqueueResult> {
+    const name = (requestedByRaw ?? "").trim().slice(0, 40) || "глядач";
+    const slug = name.toLocaleLowerCase().replace(/\s+/g, "_");
+    return this.enqueue({
+      url,
+      requestedBy: name,
+      requesterId: `site:${slug}`,
+      source: "site",
+    });
+  }
+
+  /**
+   * Go back to the most recently finished track: the current one (if any) is
+   * pushed back to the front of the queue, and the previous track starts again.
+   */
+  async playPrevious(): Promise<SongQueueState> {
+    const prev = await this.repo.lastPlayed();
+    if (!prev) {
+      return this.getQueueState();
+    }
+
+    const playing = await this.repo.getPlaying();
+    if (playing && playing.id !== prev.id) {
+      await this.repo.requeue(playing.id);
+    }
+
+    await this.repo.setPlaying(prev.id);
+    this.resetControls();
+    return this.publishState();
+  }
+
   async getQueueState(): Promise<SongQueueState> {
     const [playing, queued, settings] = await Promise.all([
       this.repo.getPlaying(),

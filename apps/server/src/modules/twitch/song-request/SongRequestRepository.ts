@@ -136,6 +136,39 @@ export class SongRequestRepository {
     });
   }
 
+  /** Recently finished tracks (played or skipped), newest first. */
+  async listHistory(limit = 20): Promise<SongRequest[]> {
+    return this.db.songRequest.findMany({
+      where: { status: { in: ["played", "skipped"] } },
+      orderBy: { playedAt: "desc" },
+      take: limit,
+    });
+  }
+
+  /** The most recently finished track (for the "previous song" control). */
+  async lastPlayed(): Promise<SongRequest | null> {
+    return this.db.songRequest.findFirst({
+      where: { status: { in: ["played", "skipped"] }, playedAt: { not: null } },
+      orderBy: { playedAt: "desc" },
+    });
+  }
+
+  /** Move a track back into the queue, clearing its played timestamp. */
+  async requeue(id: string): Promise<void> {
+    await this.db.songRequest.update({
+      where: { id },
+      data: { status: "queued", playedAt: null },
+    });
+  }
+
+  /** Promote a track straight to playing, clearing its played timestamp. */
+  async setPlaying(id: string): Promise<void> {
+    await this.db.songRequest.update({
+      where: { id },
+      data: { status: "playing", playedAt: null },
+    });
+  }
+
   async deleteById(id: string): Promise<void> {
     await this.db.songRequest.deleteMany({ where: { id } });
   }
