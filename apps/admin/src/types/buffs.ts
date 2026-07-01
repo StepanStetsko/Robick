@@ -1,4 +1,9 @@
-export type BuffEffectType = "chance" | "multiplier" | "flat" | "guarantee";
+export type BuffEffectType =
+  | "chance"
+  | "multiplier"
+  | "flat"
+  | "guarantee"
+  | "no_earn";
 export type BuffDurationMode = "time" | "rolls";
 export type BuffTarget = "self" | "other";
 export type BuffKind = "buff" | "debuff";

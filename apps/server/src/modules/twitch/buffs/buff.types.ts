@@ -2,7 +2,8 @@ export type BuffEffectType =
   | "chance"
   | "multiplier"
   | "flat"
-  | "guarantee";
+  | "guarantee"
+  | "no_earn";
 export type BuffDurationMode = "time" | "rolls";
 export type BuffTarget = "self" | "other";
 export type BuffKind = "buff" | "debuff";
@@ -12,6 +13,7 @@ export const BUFF_EFFECT_TYPES: BuffEffectType[] = [
   "multiplier",
   "flat",
   "guarantee",
+  "no_earn",
 ];
 
 export const BUFF_KINDS: BuffKind[] = ["buff", "debuff"];

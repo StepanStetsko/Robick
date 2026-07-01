@@ -43,10 +43,16 @@ const emptyForm: FormState = {
 };
 
 const effectHints: Record<BuffEffectType, string> = {
-  chance: "Зсув шансу на + (відсоткові пункти, напр. 25 = +25%, -25 = дебаф)",
-  multiplier: "Множник приросту у % (200 = ×2, 50 = половина)",
-  flat: "Плоский бонус до приросту (одиниці)",
-  guarantee: "≥0 — гарантований плюс, <0 — гарантований мінус",
+  chance:
+    "Зсув ШАНСУ успіху у відсоткових пунктах. +25 = +25% до шансу вдалого ролу, -25 = навпаки. Діє на роли фан-метра (напрямок).",
+  multiplier:
+    "Множник на НАРАХОВАНІ очки. 200 = ×2 (вдвічі більше), 50 = ×0.5, 0 = нічого. Діє на пасивний заробіток (чат + присутність).",
+  flat:
+    "Плоский бонус, що додається до результату ролу. Діє лише на фан-метр (напр. !удача).",
+  guarantee:
+    "Гарантує НАПРЯМОК ролу фан-метра: значення ≥0 — завжди в плюс, <0 — завжди в мінус. Тільки фан-метр.",
+  no_earn:
+    "Повністю ЗУПИНЯЄ пасивний заробіток (чат + присутність), поки діє. Ігри, виграші й !бонус не чіпає. Поле «сила» тут не потрібне.",
 };
 
 export function BuffsPage() {
@@ -156,6 +162,13 @@ export function BuffsPage() {
             </div>
           </div>
 
+          <p className="tab-panel__intro">
+            Бафи та дебафи — тимчасові ефекти, які глядач ловить рулеткою{" "}
+            <strong>!ефект</strong> (випадковий баф або дебаф за ціну з «Економіки»).
+            Тип ефекту визначає, <em>що</em> він робить і <em>де</em> діє — див.
+            підказку під полем «Тип ефекту».
+          </p>
+
           {submitError ? (
             <div className="state-block state-block--error">{submitError}</div>
           ) : null}
@@ -225,9 +238,10 @@ export function BuffsPage() {
                 disabled={saving}
               >
                 <option value="chance">chance — зсув шансу</option>
-                <option value="multiplier">multiplier — множник</option>
-                <option value="flat">flat — плоский бонус</option>
-                <option value="guarantee">guarantee — гарантія напрямку</option>
+                <option value="multiplier">multiplier — множник очок</option>
+                <option value="flat">flat — плоский бонус (фан-метр)</option>
+                <option value="guarantee">guarantee — гарантія напрямку (фан-метр)</option>
+                <option value="no_earn">no_earn — стоп-заробіток</option>
               </select>
               <span className="field__hint">{effectHints[form.effectType]}</span>
             </label>
@@ -241,8 +255,17 @@ export function BuffsPage() {
                 onChange={(event) =>
                   setFormValue("magnitude", Number(event.target.value) || 0)
                 }
-                disabled={saving}
+                disabled={saving || form.effectType === "no_earn"}
               />
+              <span className="field__hint">
+                {form.effectType === "no_earn"
+                  ? "Для стоп-заробітку значення не потрібне"
+                  : form.effectType === "multiplier"
+                    ? "у відсотках: 200 = ×2, 50 = ×0.5, 0 = нічого"
+                    : form.effectType === "chance"
+                      ? "відсоткові пункти: +25 або -25"
+                      : "число (для guarantee важливий лише знак: + чи −)"}
+              </span>
             </label>
 
             <div className="form form--inline">
@@ -275,40 +298,6 @@ export function BuffsPage() {
                   }
                   disabled={saving}
                 />
-              </label>
-            </div>
-
-            <div className="form form--inline">
-              <label className="field">
-                <span className="field__label">Ціна (не використовується)</span>
-                <input
-                  className="field__input"
-                  type="number"
-                  min={0}
-                  value={form.cost}
-                  onChange={(event) =>
-                    setFormValue("cost", Number(event.target.value) || 0)
-                  }
-                  disabled={saving}
-                />
-                <span className="field__hint">
-                  Ціна рулетки спільна — задається в «Економіка»
-                </span>
-              </label>
-
-              <label className="field">
-                <span className="field__label">Ціль</span>
-                <select
-                  className="field__input"
-                  value={form.target}
-                  onChange={(event) =>
-                    setFormValue("target", event.target.value as BuffTarget)
-                  }
-                  disabled={saving}
-                >
-                  <option value="self">self — собі</option>
-                  <option value="other">other — іншому</option>
-                </select>
               </label>
             </div>
 

@@ -213,6 +213,10 @@ export class BuffService {
 
   /** Direction of an effect when no explicit kind is set (sim-injected buffs). */
   private deriveKind(effectType: BuffEffectType, magnitude: number): BuffKind {
+    if (effectType === "no_earn") {
+      return "debuff";
+    }
+
     if (effectType === "multiplier") {
       return magnitude >= 100 ? "buff" : "debuff";
     }
@@ -315,6 +319,11 @@ export class BuffService {
     let multiplier = 1;
 
     for (const buff of buffs) {
+      // A single "no_earn" debuff zeroes all passive earning outright.
+      if (buff.effectType === "no_earn") {
+        return 0;
+      }
+
       if (buff.effectType === "multiplier") {
         multiplier *= buff.magnitude / 100;
       }
