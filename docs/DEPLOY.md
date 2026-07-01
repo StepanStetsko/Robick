@@ -95,9 +95,14 @@ cd ../..
 
 ## 5. Білд
 
+Бекенд **не потребує** окремого білду — він запускається через `tsx` (той самий
+резолвер, що й `npm run dev`), тому bundler-style / безрозширеннєві імпорти
+працюють без компіляції. `npm run build` (tsc) лишається лише для перевірки типів.
+
+Адмінку білдимо (статика для роздачі):
+
 ```bash
-(cd apps/server && npm run build)   # tsc → apps/server/dist
-(cd apps/admin  && npm run build)   # vite → apps/admin/dist
+(cd apps/admin && npm run build)    # vite → apps/admin/dist
 ```
 
 ---
@@ -129,7 +134,7 @@ pm2 logs robikserver         # подивитись логи
 ```bash
 cd ~/robikserver
 git pull
-(cd apps/server && npm install && npx prisma migrate deploy && npx prisma generate && npm run build)
+(cd apps/server && npm install && npx prisma migrate deploy && npx prisma generate)
 (cd apps/admin  && npm install && npm run build)
 pm2 restart robikserver
 ```

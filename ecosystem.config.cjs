@@ -1,19 +1,21 @@
 // PM2 process definition for RobikServer.
-// Usage on the server (after `npm install` + `npm run build` in apps/server):
+// Usage on the server (after `npm install` in apps/server + prisma generate):
 //   pm2 start ecosystem.config.cjs
 //   pm2 save
+// The server runs via tsx (same resolver as `npm run dev`), so the project's
+// bundler-style / extensionless imports work without a compile step. NODE_ENV
+// is intentionally left to apps/server/.env (development over plain HTTP).
 module.exports = {
   apps: [
     {
       name: "robikserver",
       cwd: "./apps/server",
-      script: "dist/main.js",
+      script: "node_modules/.bin/tsx",
+      args: "src/main.ts",
+      interpreter: "none",
       instances: 1,
       autorestart: true,
       max_restarts: 10,
-      env: {
-        NODE_ENV: "production",
-      },
     },
     // Optional: serve the built admin panel with Vite's static preview.
     // For real deployments prefer nginx serving apps/admin/dist instead.
