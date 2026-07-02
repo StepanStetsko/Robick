@@ -358,6 +358,19 @@ export class BuffService {
   }
 
   /**
+   * Chance/multiplier modifiers for the PvP & gambling games (fight, steal,
+   * guess). `chancePoints` are percentage points added to a win/success chance;
+   * `multiplier` scales an awarded amount. flat/guarantee/no_earn do NOT apply
+   * to these games (they stay roll-only / earning-only).
+   */
+  async resolveGameModifiers(
+    twitchUserId: string,
+  ): Promise<{ chancePoints: number; multiplier: number }> {
+    const mods = await this.resolveRollModifiers(twitchUserId);
+    return { chancePoints: mods.chanceDelta * 100, multiplier: mods.multiplier };
+  }
+
+  /**
    * Combined multiplier from active `multiplier`-type buffs/debuffs, applied to
    * passive earning (chat activity + presence). Only multiplier effects apply to
    * earning — chance/guarantee/flat are roll-only. Returns 1 when no buffs.

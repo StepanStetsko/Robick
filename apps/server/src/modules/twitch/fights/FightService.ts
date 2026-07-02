@@ -2,6 +2,7 @@ import { logger } from "../../../core/logger/logger.js";
 import { RateLimitService } from "../guards/RateLimitService.js";
 import type { TwitchChatService } from "../TwitchChatService.js";
 import { EconomyService } from "../economy/EconomyService.js";
+import { BuffService } from "../buffs/BuffService.js";
 
 type Settings = Awaited<ReturnType<EconomyService["getSettings"]>>;
 
@@ -33,6 +34,7 @@ export class FightService {
   constructor(
     private readonly chatService: TwitchChatService,
     private readonly economyService: EconomyService,
+    private readonly buffService: BuffService,
   ) {}
 
   async requestFight(
@@ -153,7 +155,23 @@ export class FightService {
     const m = settings.messages;
 
     try {
-      const challengerWins = Math.random() * 100 < settings.fightWinChancePercent;
+      // Chance buffs shift the odds: the challenger's raise their win %, the
+      // target's lower it (their own chance defends). Clamped to 5–95%.
+      const [challengerMods, targetMods] = await Promise.all([
+        this.buffService.resolveGameModifiers(fight.challenger.twitchUserId),
+        this.buffService.resolveGameModifiers(fight.target.twitchUserId),
+      ]);
+      const winPercent = Math.max(
+        5,
+        Math.min(
+          95,
+          settings.fightWinChancePercent +
+            challengerMods.chancePoints -
+            targetMods.chancePoints,
+        ),
+      );
+
+      const challengerWins = Math.random() * 100 < winPercent;
       const winner = challengerWins ? fight.challenger : fight.target;
       const loser = challengerWins ? fight.target : fight.challenger;
 

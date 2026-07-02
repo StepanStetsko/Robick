@@ -2,6 +2,7 @@ import { logger } from "../../../core/logger/logger.js";
 import { twitchEventLog } from "../events/twitch-event-log.js";
 import type { TwitchChatService } from "../TwitchChatService.js";
 import { EconomyService } from "../economy/EconomyService.js";
+import { BuffService } from "../buffs/BuffService.js";
 import { GuessGameRepository } from "./GuessGameRepository.js";
 import {
   defaultGuessGameMessages,
@@ -35,6 +36,7 @@ export class GuessGameService {
     private readonly repository: GuessGameRepository,
     private readonly chatService: TwitchChatService,
     private readonly economyService: EconomyService,
+    private readonly buffService: BuffService,
   ) {}
 
   async getSettings(): Promise<GuessGameSettingsDto> {
@@ -214,6 +216,12 @@ export class GuessGameService {
     const unit = await this.getUnit();
     const displayName = viewer.displayName?.trim() || viewer.userLogin;
 
+    // A multiplier buff scales the winner's reward.
+    const mods = await this.buffService.resolveGameModifiers(
+      viewer.twitchUserId,
+    );
+    const reward = Math.max(1, Math.round(game.reward * mods.multiplier));
+
     let balance = 0;
 
     try {
@@ -223,7 +231,7 @@ export class GuessGameService {
           userLogin: viewer.userLogin,
           displayName,
         },
-        game.reward,
+        reward,
         "guess",
       );
       balance = wallet.balance;
@@ -238,7 +246,7 @@ export class GuessGameService {
       this.render(settings.messages.win, {
         displayName,
         secret: game.secret,
-        reward: game.reward,
+        reward,
         unit,
         balance,
       }),
@@ -248,7 +256,7 @@ export class GuessGameService {
       source: "chat",
       type: "guess.won",
       message: `Guess game won by ${viewer.userLogin}: ${game.secret}`,
-      data: { secret: game.secret, reward: game.reward },
+      data: { secret: game.secret, reward },
     });
 
     return true;

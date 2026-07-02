@@ -184,6 +184,7 @@ const guessGameService = new GuessGameService(
   guessGameRepository,
   twitchChatService,
   economyService,
+  buffService,
 );
 const guessGameCommandRouter = new GuessGameCommandRouter(guessGameService);
 const helpCommandRouter = new HelpCommandRouter(
@@ -199,7 +200,11 @@ const rouletteCommandRouter = new RouletteCommandRouter(
   buffService,
   leaderLockService,
 );
-const fightService = new FightService(twitchChatService, economyService);
+const fightService = new FightService(
+  twitchChatService,
+  economyService,
+  buffService,
+);
 const fightCommandRouter = new FightCommandRouter(economyService, fightService);
 const chatActivityTracker = new ChatActivityTracker();
 const presenceTracker = new PresenceTracker();
@@ -234,6 +239,7 @@ const stealService = new StealService(
   chatActivityTracker,
   presenceTracker,
   protectionRepository,
+  buffService,
 );
 const stealCommandRouter = new StealCommandRouter(
   twitchChatService,

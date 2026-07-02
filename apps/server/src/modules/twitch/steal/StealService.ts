@@ -4,6 +4,7 @@ import type { TwitchChatService } from "../TwitchChatService.js";
 import { ChatActivityTracker } from "../economy/ChatActivityTracker.js";
 import { PresenceTracker } from "../economy/PresenceTracker.js";
 import { EconomyService } from "../economy/EconomyService.js";
+import { BuffService } from "../buffs/BuffService.js";
 import { ProtectionRepository } from "./ProtectionRepository.js";
 
 type Settings = Awaited<ReturnType<EconomyService["getSettings"]>>;
@@ -33,7 +34,8 @@ type PendingSteal = {
  * attempt is foiled and the thief is fined. Otherwise the steal resolves on the
  * chance roll: success transfers a % of the victim's balance to the thief;
  * failure ("caught") fines the thief. The fine is a % of the *thief's* balance,
- * paid to the victim. Zero-sum — no minting. Buffs do NOT affect steal.
+ * paid to the victim. Zero-sum — no minting. Chance buffs shift the success
+ * odds (thief's raise it, victim's defend).
  */
 export class StealService {
   private readonly rateLimit = new RateLimitService();
@@ -46,6 +48,7 @@ export class StealService {
     private readonly activityTracker: ChatActivityTracker,
     private readonly presenceTracker: PresenceTracker,
     private readonly protectionRepository: ProtectionRepository,
+    private readonly buffService: BuffService,
   ) {}
 
   async isProtected(twitchUserId: string): Promise<boolean> {
@@ -182,7 +185,21 @@ export class StealService {
         Math.max(1, Math.floor((victimBalance * percent) / 100)),
       );
 
-      const success = Math.random() * 100 < settings.stealChancePercent;
+      const [thiefMods, victimMods] = await Promise.all([
+        this.buffService.resolveGameModifiers(thief.twitchUserId),
+        this.buffService.resolveGameModifiers(victim.twitchUserId),
+      ]);
+      const successPercent = Math.max(
+        5,
+        Math.min(
+          95,
+          settings.stealChancePercent +
+            thiefMods.chancePoints -
+            victimMods.chancePoints,
+        ),
+      );
+
+      const success = Math.random() * 100 < successPercent;
 
       if (success) {
         const result = await this.economyService.transfer(victim, thief, stake);
