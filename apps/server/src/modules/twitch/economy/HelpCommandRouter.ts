@@ -4,6 +4,9 @@ import { EconomyService } from "./EconomyService.js";
 import { FunMeterService } from "../fun-meter/FunMeterService.js";
 import { GiveawayService } from "../giveaway/GiveawayService.js";
 import { GuessGameService } from "../guess/GuessGameService.js";
+import { BuffService } from "../buffs/BuffService.js";
+import { SongQueueService } from "../song-request/SongQueueService.js";
+import { SupporterService } from "../supporter/SupporterService.js";
 
 const COMMAND_PREFIX = "!";
 // Stay well under Twitch's ~500-char message limit.
@@ -22,6 +25,9 @@ export class HelpCommandRouter {
     private readonly funMeterService: FunMeterService,
     private readonly giveawayService: GiveawayService,
     private readonly guessGameService: GuessGameService,
+    private readonly buffService: BuffService,
+    private readonly songQueueService: SongQueueService,
+    private readonly supporterService: SupporterService,
   ) {}
 
   async handle(event: TwitchChatMessageEvent): Promise<boolean> {
@@ -45,15 +51,19 @@ export class HelpCommandRouter {
   /**
    * The auto-generated command list — "!name (desc) · ..." — that {commands}
    * expands to. Command names come from settings (live, so renaming updates
-   * the list); descriptions are built in. Buff/debuff commands are omitted.
+   * the list); descriptions are built in.
    */
   async buildCommandList(): Promise<string> {
-    const [economy, features, giveaway, guess] = await Promise.all([
-      this.economyService.getSettings(),
-      this.funMeterService.listFeatures(),
-      this.giveawayService.getSettings(),
-      this.guessGameService.getSettings(),
-    ]);
+    const [economy, features, giveaway, guess, buff, song, supporter] =
+      await Promise.all([
+        this.economyService.getSettings(),
+        this.funMeterService.listFeatures(),
+        this.giveawayService.getSettings(),
+        this.guessGameService.getSettings(),
+        this.buffService.getSettings(),
+        this.songQueueService.getSettings(),
+        this.supporterService.getSettings(),
+      ]);
 
     const entries: Array<[string, string]> = [
       [economy.balanceCommand, "баланс"],
@@ -66,6 +76,19 @@ export class HelpCommandRouter {
       [guess.stopCommand, "стоп гри"],
       [economy.stealCommand, "крадіжка"],
       [economy.shieldCommand, "захист"],
+      [economy.buffRollCommand, "ефект"],
+      [economy.buffListCommand, "список ефектів"],
+      [buff.curseCommand, "прокляти"],
+      ...(supporter.enabled
+        ? [[supporter.bonusCommand, "бонус"] as [string, string]]
+        : []),
+      ...(song.enabled
+        ? ([
+            [song.command, "пісня"],
+            [song.voteSkipCommand, "скіп"],
+            [song.pauseCommand, "пауза"],
+          ] as Array<[string, string]>)
+        : []),
       ...giveaway.presets
         .filter((preset) => preset.enabled)
         .map((preset): [string, string] => [preset.commandName, "розіграш"]),

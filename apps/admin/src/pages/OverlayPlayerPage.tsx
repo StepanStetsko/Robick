@@ -183,13 +183,27 @@ export function OverlayPlayerPage() {
       playerRef.current = new window.YT.Player("yt-player", {
         width: "100%",
         height: "100%",
-        playerVars: { autoplay: 1, controls: 0, rel: 0, playsinline: 1 },
+        // Pin the host + origin so the IFrame JS API works on a real domain
+        // (over HTTPS). Without an explicit origin, playVideo/loadVideoById can
+        // be silently ignored once the overlay is served from adm.<domain>.
+        host: "https://www.youtube.com",
+        playerVars: {
+          autoplay: 1,
+          controls: 0,
+          rel: 0,
+          playsinline: 1,
+          origin: window.location.origin,
+        },
         events: {
           onReady: () => void syncState(),
           onStateChange: (event: { data: number }) => {
             if (event.data === window.YT?.PlayerState.ENDED) {
               void onEnded();
             }
+          },
+          onError: (event: { data: number }) => {
+            // eslint-disable-next-line no-console
+            console.error("[overlay] YouTube player error", event.data);
           },
         },
       });

@@ -187,13 +187,6 @@ const guessGameService = new GuessGameService(
   buffService,
 );
 const guessGameCommandRouter = new GuessGameCommandRouter(guessGameService);
-const helpCommandRouter = new HelpCommandRouter(
-  twitchChatService,
-  economyService,
-  funMeterService,
-  giveawayService,
-  guessGameService,
-);
 const rouletteCommandRouter = new RouletteCommandRouter(
   twitchChatService,
   economyService,
@@ -261,8 +254,18 @@ const songRequestCommandRouter = new SongRequestCommandRouter(
   supporterService,
 );
 
-// Guide generation reads live command names from all feature settings, so it is
-// created after song-request and supporter services exist.
+// The help list and guide read live command names from all feature settings,
+// so they are created after song-request and supporter services exist.
+const helpCommandRouter = new HelpCommandRouter(
+  twitchChatService,
+  economyService,
+  funMeterService,
+  giveawayService,
+  guessGameService,
+  buffService,
+  songQueueService,
+  supporterService,
+);
 const commandGuideService = new CommandGuideService(
   economyService,
   funMeterService,
