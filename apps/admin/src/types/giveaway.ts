@@ -20,6 +20,7 @@ export type GiveawayMessages = {
   invalidAmount: string;
   selfStart: string;
   selfInsufficient: string;
+  selfBelowMin: string;
   selfRefunded: string;
 };
 
@@ -27,6 +28,7 @@ export type GiveawaySettings = {
   joinKeyword: string;
   selfCommand: string;
   maxAmount: number;
+  selfMinAmount: number;
   durationSeconds: number;
   reminderMinSeconds: number;
   reminderMaxSeconds: number;

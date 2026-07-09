@@ -32,6 +32,7 @@ export type EconomyMessages = {
   stealTargetUnavailable: string;
   stealShielded: string;
   stealTargetTooPoor: string;
+  stealOffline: string;
   shieldBought: string;
   shieldAlreadyActive: string;
   shieldInsufficient: string;

@@ -32,6 +32,7 @@ export type EconomyMessageTemplates = {
   stealTargetUnavailable: string;
   stealShielded: string;
   stealTargetTooPoor: string;
+  stealOffline: string;
   shieldBought: string;
   shieldAlreadyActive: string;
   shieldInsufficient: string;
@@ -108,6 +109,8 @@ export const defaultEconomyMessages: EconomyMessageTemplates = {
   stealShielded: "@{displayName}, ціль під щитом 🛡️ — не вкрасти.",
   stealTargetTooPoor:
     "@{displayName}, у цілі надто мало балів, щоб красти.",
+  stealOffline:
+    "@{displayName}, красти можна лише під час стріму. Зараз офлайн 😴",
   shieldBought:
     "@{displayName}, щит 🛡️ активний на {minutes} хв. Баланс: {balance} {unit}.",
   shieldAlreadyActive:
@@ -263,6 +266,10 @@ export function normalizeEconomyMessages(
     stealTargetTooPoor: normalizeTemplate(
       value.stealTargetTooPoor,
       defaultEconomyMessages.stealTargetTooPoor,
+    ),
+    stealOffline: normalizeTemplate(
+      value.stealOffline,
+      defaultEconomyMessages.stealOffline,
     ),
     shieldBought: normalizeTemplate(
       value.shieldBought,

@@ -205,6 +205,7 @@ model GiveawaySettings {
   joinKeyword        String   @default("участь")
   selfCommand        String   @default("розіграшсвоїх")
   maxAmount          Int      @default(100000)
+  selfMinAmount      Int      @default(1)
   durationSeconds    Int      @default(30)
   reminderMinSeconds Int      @default(7)
   reminderMaxSeconds Int      @default(10)

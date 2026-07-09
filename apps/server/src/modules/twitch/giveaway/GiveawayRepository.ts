@@ -47,6 +47,9 @@ export class GiveawayRepository {
           ? { selfCommand: input.selfCommand }
           : {}),
         ...(input.maxAmount !== undefined ? { maxAmount: input.maxAmount } : {}),
+        ...(input.selfMinAmount !== undefined
+          ? { selfMinAmount: input.selfMinAmount }
+          : {}),
         ...(input.durationSeconds !== undefined
           ? { durationSeconds: input.durationSeconds }
           : {}),

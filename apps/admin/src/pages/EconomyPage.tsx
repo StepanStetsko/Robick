@@ -252,6 +252,11 @@ const messageGroups: MessageGroupMeta[] = [
         hint: "{displayName}",
       },
       {
+        key: "stealOffline",
+        label: "Стрім офлайн",
+        hint: "{displayName}",
+      },
+      {
         key: "shieldBought",
         label: "Щит куплено",
         hint: "{displayName}, {minutes}, {balance}, {unit}",

@@ -2,6 +2,7 @@ import { logger } from "../../../core/logger/logger.js";
 import type { TwitchChatService } from "../TwitchChatService.js";
 import type { TwitchChatMessageEvent } from "../twitch.types.js";
 import { EconomyService } from "../economy/EconomyService.js";
+import { TwitchRuntimeState } from "../runtime/TwitchRuntimeState.js";
 import { StealService, type StealViewer } from "./StealService.js";
 
 const COMMAND_PREFIX = "!";
@@ -18,6 +19,7 @@ export class StealCommandRouter {
     private readonly chatService: TwitchChatService,
     private readonly economyService: EconomyService,
     private readonly stealService: StealService,
+    private readonly runtimeState: TwitchRuntimeState,
   ) {}
 
   async handle(event: TwitchChatMessageEvent): Promise<boolean> {
@@ -47,6 +49,17 @@ export class StealCommandRouter {
     settings: Settings,
   ): Promise<void> {
     const thief = this.getViewer(event);
+
+    // Крадіжка доступна лише під час стріму (як і пасивний заробіток).
+    if (!this.runtimeState.isStreamLive()) {
+      await this.send(
+        settings.messages.stealOffline,
+        { displayName: thief.displayName },
+        event,
+      );
+      return;
+    }
+
     const target = this.findMentionTarget(event);
 
     if (!target || target.twitchUserId === event.broadcaster_user_id) {

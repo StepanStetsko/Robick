@@ -75,6 +75,14 @@ export class GiveawayService {
       normalized.maxAmount = this.clampInt(input.maxAmount, 1, 1_000_000_000);
     }
 
+    if (input.selfMinAmount !== undefined) {
+      normalized.selfMinAmount = this.clampInt(
+        input.selfMinAmount,
+        1,
+        1_000_000_000,
+      );
+    }
+
     if (input.durationSeconds !== undefined) {
       normalized.durationSeconds = this.clampInt(input.durationSeconds, 5, 3600);
     }
@@ -230,6 +238,18 @@ export class GiveawayService {
         this.render(messages.invalidAmount, {
           displayName,
           commandName: settings.selfCommand,
+        }),
+        replyMessageId,
+      );
+      return;
+    }
+
+    if (parsedAmount < settings.selfMinAmount) {
+      await this.chatService.sendMessage(
+        this.render(messages.selfBelowMin, {
+          displayName,
+          min: settings.selfMinAmount,
+          unit,
         }),
         replyMessageId,
       );
@@ -540,6 +560,7 @@ export class GiveawayService {
       joinKeyword: row.joinKeyword,
       selfCommand: row.selfCommand,
       maxAmount: row.maxAmount,
+      selfMinAmount: row.selfMinAmount,
       durationSeconds: row.durationSeconds,
       reminderMinSeconds: row.reminderMinSeconds,
       reminderMaxSeconds: row.reminderMaxSeconds,

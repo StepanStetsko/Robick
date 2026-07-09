@@ -15,6 +15,7 @@ type FormState = {
   joinKeyword: string;
   selfCommand: string;
   maxAmount: number;
+  selfMinAmount: number;
   durationSeconds: number;
   reminderMinSeconds: number;
   reminderMaxSeconds: number;
@@ -73,6 +74,11 @@ const messageFields: MessageFieldMeta[] = [
     hint: "{displayName}, {amount}, {balance}, {unit}",
   },
   {
+    key: "selfBelowMin",
+    label: "Менше мінімальної суми (свої)",
+    hint: "{displayName}, {min}, {unit}",
+  },
+  {
     key: "selfRefunded",
     label: "Повернення (немає учасників)",
     hint: "{displayName}, {amount}, {unit}",
@@ -84,6 +90,7 @@ function settingsToForm(settings: GiveawaySettings): FormState {
     joinKeyword: settings.joinKeyword,
     selfCommand: settings.selfCommand,
     maxAmount: settings.maxAmount,
+    selfMinAmount: settings.selfMinAmount,
     durationSeconds: settings.durationSeconds,
     reminderMinSeconds: settings.reminderMinSeconds,
     reminderMaxSeconds: settings.reminderMaxSeconds,
@@ -131,6 +138,7 @@ export function GiveawayPage() {
         joinKeyword: form.joinKeyword,
         selfCommand: form.selfCommand,
         maxAmount: form.maxAmount,
+        selfMinAmount: form.selfMinAmount,
         durationSeconds: form.durationSeconds,
         reminderMinSeconds: form.reminderMinSeconds,
         reminderMaxSeconds: form.reminderMaxSeconds,
@@ -279,6 +287,23 @@ export function GiveawayPage() {
                         }
                         disabled={saving}
                       />
+                    </label>
+
+                    <label className="field">
+                      <span className="field__label">Мін. сума «розіграш своїх»</span>
+                      <input
+                        className="field__input"
+                        type="number"
+                        min={1}
+                        value={form.selfMinAmount}
+                        onChange={(event) =>
+                          setFormValue("selfMinAmount", Number(event.target.value) || 1)
+                        }
+                        disabled={saving}
+                      />
+                      <span className="field__hint">
+                        мінімум балів для !{form.selfCommand}
+                      </span>
                     </label>
                   </div>
 

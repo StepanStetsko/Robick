@@ -22,6 +22,7 @@ export type GiveawayMessages = {
   invalidAmount: string;
   selfStart: string;
   selfInsufficient: string;
+  selfBelowMin: string;
   selfRefunded: string;
 };
 
@@ -29,6 +30,7 @@ export type GiveawaySettingsDto = {
   joinKeyword: string;
   selfCommand: string;
   maxAmount: number;
+  selfMinAmount: number;
   durationSeconds: number;
   reminderMinSeconds: number;
   reminderMaxSeconds: number;
@@ -84,6 +86,8 @@ export const defaultGiveawayMessages: GiveawayMessages = {
     "🎉 @{displayName} розіграє свої {amount} {unit}! Напиши !{joinKeyword}, щоб взяти участь. Часу: {seconds} с.",
   selfInsufficient:
     "@{displayName}, недостатньо балів для розіграшу {amount} {unit}. Баланс: {balance} {unit}.",
+  selfBelowMin:
+    "@{displayName}, мінімальна сума для розіграшу своїх — {min} {unit}.",
   selfRefunded:
     "😕 Розіграш скасовано — ніхто не взяв участь. @{displayName}, повертаємо {amount} {unit}.",
 };
@@ -133,6 +137,10 @@ export function normalizeGiveawayMessages(value: unknown): GiveawayMessages {
     selfInsufficient: normalizeTemplate(
       value.selfInsufficient,
       defaultGiveawayMessages.selfInsufficient,
+    ),
+    selfBelowMin: normalizeTemplate(
+      value.selfBelowMin,
+      defaultGiveawayMessages.selfBelowMin,
     ),
     selfRefunded: normalizeTemplate(
       value.selfRefunded,

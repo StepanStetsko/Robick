@@ -238,6 +238,7 @@ const stealCommandRouter = new StealCommandRouter(
   twitchChatService,
   economyService,
   stealService,
+  runtimeState,
 );
 
 const rewardRedemptionHandler = new RewardRedemptionHandler(
