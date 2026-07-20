@@ -45,7 +45,7 @@ export class FunMeterCommandRouter {
     });
 
     if (!subcommand) {
-      const limitStatus = this.service.getRollLimitStatus(feature, viewer);
+      const limitStatus = await this.service.getRollLimitStatus(feature, viewer);
 
       if (!limitStatus.allowed) {
         await this.chatService.sendMessage(limitStatus.chatMessage, event.message_id);

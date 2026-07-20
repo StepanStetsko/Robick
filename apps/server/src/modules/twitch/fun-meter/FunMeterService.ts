@@ -42,9 +42,6 @@ const DEFAULT_SELF_ARGS = ["me", "my", "я", "мій", "моє"];
 type RollSource = "chat.command" | "admin.test";
 
 export class FunMeterService {
-  private readonly dailyRollUsage = new Map<string, string>();
-  private dailyUsageDateKey = "";
-
   constructor(private readonly repository: FunMeterRepository) {}
 
   async listFeatures(): Promise<FunMeterFeatureDto[]> {
@@ -167,7 +164,7 @@ export class FunMeterService {
     const source = options.source ?? "chat.command";
 
     if (source === "chat.command") {
-      const limitStatus = this.getRollLimitStatus(feature, viewer);
+      const limitStatus = await this.getRollLimitStatus(feature, viewer);
 
       if (!limitStatus.allowed) {
         throw new Error("Daily fun meter roll limit reached");
@@ -332,27 +329,30 @@ export class FunMeterService {
 
     const zeroBlocked = delta === 0 && direction === "decrease";
     if (source === "chat.command" && !zeroBlocked) {
-      this.markRollUsed(feature, viewer);
+      await this.markRollUsed(feature, viewer);
     }
 
     return result;
   }
 
-  getRollLimitStatus(
+  /**
+   * Daily-limit check, backed by `ViewerFunStat.lastRollDay` so the limit
+   * survives a bot restart (it used to live in an in-memory map and reset).
+   */
+  async getRollLimitStatus(
     feature: FunMeterFeatureDto,
     viewer: FunMeterViewerInput,
-  ): { allowed: true } | { allowed: false; chatMessage: string } {
+  ): Promise<{ allowed: true } | { allowed: false; chatMessage: string }> {
     if (feature.rollLimitMode !== "daily") {
       return { allowed: true };
     }
 
-    this.pruneDailyUsageIfNeeded();
+    const stat = await this.repository.findViewer(
+      feature.key,
+      viewer.twitchUserId,
+    );
 
-    const usageKey = this.getDailyUsageKey(feature.key, viewer.twitchUserId);
-    const usedDateKey = this.dailyRollUsage.get(usageKey);
-    const todayKey = this.getLocalDateKey();
-
-    if (usedDateKey !== todayKey) {
+    if (stat?.lastRollDay !== this.getLocalDateKey()) {
       return { allowed: true };
     }
 
@@ -469,7 +469,8 @@ export class FunMeterService {
       twitchUserId,
     );
 
-    this.clearRollUsage(feature.key, twitchUserId);
+    // resetUser deletes the stat row, so lastRollDay (the daily limit) goes
+    // with it — no separate cleanup needed.
 
     twitchRealtimeHub.publish("fun-meter.leaderboard.changed", {
       featureKey: feature.key,
@@ -833,34 +834,19 @@ export class FunMeterService {
     throw new Error('rollLimitMode must be either "daily" or "none"');
   }
 
-  private markRollUsed(feature: FunMeterFeatureDto, viewer: FunMeterViewerInput) {
+  private async markRollUsed(
+    feature: FunMeterFeatureDto,
+    viewer: FunMeterViewerInput,
+  ): Promise<void> {
     if (feature.rollLimitMode !== "daily") {
       return;
     }
 
-    this.pruneDailyUsageIfNeeded();
-
-    this.dailyRollUsage.set(
-      this.getDailyUsageKey(feature.key, viewer.twitchUserId),
+    await this.repository.setLastRollDay(
+      feature.key,
+      viewer.twitchUserId,
       this.getLocalDateKey(),
     );
-  }
-
-  private clearRollUsage(featureKey: string, twitchUserId: string) {
-    this.dailyRollUsage.delete(this.getDailyUsageKey(featureKey, twitchUserId));
-  }
-
-  private getDailyUsageKey(featureKey: string, twitchUserId: string): string {
-    return `${featureKey}:${twitchUserId}`;
-  }
-
-  private pruneDailyUsageIfNeeded(): void {
-    const today = this.getLocalDateKey();
-
-    if (today !== this.dailyUsageDateKey) {
-      this.dailyRollUsage.clear();
-      this.dailyUsageDateKey = today;
-    }
   }
 
   private getLocalDateKey(): string {

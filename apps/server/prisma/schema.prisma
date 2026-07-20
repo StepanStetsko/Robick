@@ -81,6 +81,9 @@ model ViewerFunStat {
   lastDelta     Int?
   lastDirection String?
   lastMessage   String?
+  // Локальний день (YYYY-MM-DD) останнього ролу з чату — денний ліміт
+  // переживає перезапуск бота.
+  lastRollDay   String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

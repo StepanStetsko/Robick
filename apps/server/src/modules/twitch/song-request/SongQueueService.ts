@@ -245,25 +245,6 @@ export class SongQueueService {
   }
 
   /**
-   * Public site form: enqueue by a typed name (no Twitch id). The name doubles
-   * as a pseudo requester id (`site:<slug>`) so the per-user queue limit and
-   * cooldown still apply to the same person.
-   */
-  async enqueueFromSite(
-    url: string,
-    requestedByRaw: string,
-  ): Promise<EnqueueResult> {
-    const name = (requestedByRaw ?? "").trim().slice(0, 40) || "глядач";
-    const slug = name.toLocaleLowerCase().replace(/\s+/g, "_");
-    return this.enqueue({
-      url,
-      requestedBy: name,
-      requesterId: `site:${slug}`,
-      source: "site",
-    });
-  }
-
-  /**
    * Go back to the most recently finished track: the current one (if any) is
    * pushed back to the front of the queue, and the previous track starts again.
    */

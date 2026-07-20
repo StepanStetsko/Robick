@@ -2022,28 +2022,6 @@ app.post<{
     };
   });
 
-  // Public site form: a viewer adds a song by typing a name + YouTube link.
-  app.post<{
-    Body: { url?: string; name?: string };
-  }>("/public/song-queue/request", async (request, reply) => {
-    const result = await twitchRuntimeContainer.songQueueService.enqueueFromSite(
-      request.body?.url ?? "",
-      request.body?.name ?? "",
-    );
-
-    if (!result.ok) {
-      reply.code(400);
-      return {
-        ok: false,
-        reason: result.reason,
-        secondsLeft: result.secondsLeft,
-        durationSec: result.durationSec,
-        maxDurationSec: result.maxDurationSec,
-      };
-    }
-
-    return { ok: true, data: result.entry, position: result.position };
-  });
 }
 
 

@@ -185,6 +185,21 @@ export class FunMeterRepository {
     });
   }
 
+  /**
+   * Persist the local day of the viewer's last chat roll, so the daily limit
+   * survives a bot restart. No-op if the stat row does not exist yet.
+   */
+  async setLastRollDay(
+    featureKey: string,
+    twitchUserId: string,
+    day: string,
+  ): Promise<void> {
+    await this.db.viewerFunStat.updateMany({
+      where: { featureKey, twitchUserId },
+      data: { lastRollDay: day },
+    });
+  }
+
   async getRank(featureKey: string, score: number): Promise<number> {
     const higherScores = await this.db.viewerFunStat.count({
       where: {
