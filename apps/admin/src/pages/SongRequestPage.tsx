@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   addSong,
   addSongBlock,
+  banFallbackTrack,
   clearSongQueue,
   getSongBlocklist,
   getSongHistory,
@@ -24,7 +25,13 @@ import type {
   SongRequestSettings,
 } from "../types/songRequest";
 
-type TabId = "queue" | "history" | "blocklist" | "settings" | "messages";
+type TabId =
+  | "queue"
+  | "history"
+  | "blocklist"
+  | "fallback"
+  | "settings"
+  | "messages";
 
 type FormState = {
   command: string;
@@ -36,6 +43,9 @@ type FormState = {
   pauseCommand: string;
   skipVotesNeeded: number;
   historyLimit: number;
+  fallbackEnabled: boolean;
+  fallbackSeed: string;
+  fallbackBlockKeywords: string;
   messages: SongRequestMessages;
 };
 
@@ -68,6 +78,9 @@ function settingsToForm(settings: SongRequestSettings): FormState {
     pauseCommand: settings.pauseCommand,
     skipVotesNeeded: settings.skipVotesNeeded,
     historyLimit: settings.historyLimit,
+    fallbackEnabled: settings.fallbackEnabled,
+    fallbackSeed: settings.fallbackSeed,
+    fallbackBlockKeywords: settings.fallbackBlockKeywords,
     messages: settings.messages,
   };
 }
@@ -81,6 +94,7 @@ export function SongRequestPage() {
     paused: false,
     skipVotes: 0,
     skipVotesNeeded: 5,
+    fallbackNow: null,
   });
   const [addUrl, setAddUrl] = useState("");
   const [loading, setLoading] = useState(true);
@@ -164,6 +178,19 @@ export function SongRequestPage() {
       setBlocklist(await removeSongBlock(id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося прибрати");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleBanFallback() {
+    setBusy(true);
+    setError(null);
+
+    try {
+      setBlocklist(await banFallbackTrack());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не вдалося забанити трек");
     } finally {
       setBusy(false);
     }
@@ -305,6 +332,7 @@ export function SongRequestPage() {
             ["queue", "Черга"],
             ["history", "Історія"],
             ["blocklist", "Блок-лист"],
+            ["fallback", "Фон"],
             ["settings", "Налаштування"],
             ["messages", "Повідомлення"],
           ] as [TabId, string][]).map(([id, label]) => (
@@ -632,8 +660,106 @@ export function SongRequestPage() {
           </div>
         ) : null}
 
-        {form && (activeTab === "settings" || activeTab === "messages") ? (
+        {form &&
+        (activeTab === "settings" ||
+          activeTab === "messages" ||
+          activeTab === "fallback") ? (
           <form className="form" onSubmit={handleSave}>
+            {activeTab === "fallback" ? (
+              <>
+                <p className="tab-panel__intro">
+                  Коли черга замовлених пісень порожня, віджет вмикає{" "}
+                  <strong>YouTube-Мікс (радіо)</strong> від сіда й сам підкидає
+                  рекомендації. Треки, що підпадають під блок-слова або блок-лист
+                  — авто-скіпаються. ⚠ Це не 100% захист від російського —
+                  використовуй блок-слова й кнопку «Забанити трек».
+                </p>
+
+                <label className="field field--checkbox">
+                  <input
+                    type="checkbox"
+                    checked={form.fallbackEnabled}
+                    onChange={(event) =>
+                      setFormValue("fallbackEnabled", event.target.checked)
+                    }
+                    disabled={saving}
+                  />
+                  <span>Фонову музику (YouTube-Мікс) увімкнено</span>
+                </label>
+
+                <label className="field">
+                  <span className="field__label">
+                    Сід міксу (YouTube-відео або плейлист)
+                  </span>
+                  <input
+                    className="field__input"
+                    value={form.fallbackSeed}
+                    onChange={(event) =>
+                      setFormValue("fallbackSeed", event.target.value)
+                    }
+                    disabled={saving}
+                    placeholder="https://youtu.be/... або посилання на плейлист"
+                  />
+                  <span className="field__hint">
+                    від цього відео/плейлиста YouTube будує «Мікс» і нескінченно
+                    підкидає схожі треки. Обери щось українське — рекомендації
+                    схилятимуться в той бік.
+                  </span>
+                </label>
+
+                <label className="field">
+                  <span className="field__label">
+                    Блок-слова для авто-скіпу (кома або новий рядок)
+                  </span>
+                  <textarea
+                    className="field__input field__input--textarea"
+                    value={form.fallbackBlockKeywords}
+                    onChange={(event) =>
+                      setFormValue("fallbackBlockKeywords", event.target.value)
+                    }
+                    disabled={saving}
+                    rows={3}
+                    placeholder="напр. назви/канали, які точно пропускати"
+                  />
+                  <span className="field__hint">
+                    якщо назва треку або канал містить одне зі слів — трек
+                    авто-пропускається (враховується й блок-лист відео).
+                  </span>
+                </label>
+
+                <div className="command-ref__group">
+                  <h3 className="command-ref__group-title">
+                    Зараз у фоні
+                  </h3>
+                  {state.fallbackNow ? (
+                    <div className="state-block">
+                      <strong>
+                        {state.fallbackNow.title || state.fallbackNow.videoId}
+                      </strong>
+                      <span className="table-muted">
+                        {state.fallbackNow.author ?? ""}
+                      </span>
+                      <div className="actions" style={{ marginTop: 10 }}>
+                        <button
+                          className="button button--danger button--small"
+                          type="button"
+                          onClick={() => void handleBanFallback()}
+                          disabled={busy}
+                          title="Заблокувати цей трек — віджет його скіпне"
+                        >
+                          🚫 Забанити трек
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="state-block">
+                      Фон зараз не грає (або грає замовлена пісня).
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : null}
+
             {activeTab === "settings" ? (
               <>
                 <label className="field field--checkbox">

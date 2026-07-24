@@ -187,6 +187,11 @@ model SongRequestSettings {
   pauseCommand       String   @default("пауза")
   skipVotesNeeded    Int      @default(5)
   historyLimit       Int      @default(20) // скільки зіграних/пропущених тримати в історії
+  // YouTube-фон: коли черга порожня, оверлей крутить «Мікс» (радіо) від сіда й
+  // авто-скіпає треки, що підпадають під ключові слова (напр. російські).
+  fallbackEnabled       Boolean @default(false)
+  fallbackSeed          String  @default("") // YouTube відео/плейлист-сід для міксу
+  fallbackBlockKeywords String  @default("") // кома/новий рядок: слова для авто-скіпу
   messages           Json?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -412,6 +417,26 @@ model DonatelloSettings {
   updatedAt      DateTime @updatedAt
 }
 
+// Donatello subscription supporters, synced from GET /subscribers (X-Token).
+// Stored so the admin can show a list (nick / tier / amount) and, later, map to
+// a supporter tier by twitchName.
+model DonatelloSubscriber {
+  id                 String   @id @default(cuid())
+  pubClientId        String   @unique
+  clientName         String?
+  tierName           String?
+  amount             Float?
+  currency           String?
+  twitchName         String?
+  subscriptionStatus String?
+  isActive           Boolean  @default(true)
+  successPayments    Int?
+  lastSyncedAt       DateTime @default(now())
+  createdAt          DateTime @default(now())
+
+  @@index([isActive])
+}
+
 // Processed Donatello callbacks — deduped by the donation's pubId (webhooks may
 // retry) plus a short history for the admin panel. songRequestId links to the
 // queued track when a song was added; outcome records why nothing was queued.
@@ -428,25 +453,6 @@ model DonatelloDonation {
   createdAt     DateTime @default(now())
 
   @@index([createdAt])
-}
-
-// Spotify Connect fallback: when the YouTube song queue is idle (and not
-// paused), the bot tells the streamer's Spotify desktop app to play a fallback
-// playlist; a requested song / pause stops it. Config lives here; the OAuth app
-// client id/secret + redirect are in .env. Tokens are stored here (single row).
-model SpotifySettings {
-  id                 String    @id @default(cuid())
-  key                String    @unique @default("spotify")
-  enabled            Boolean   @default(false)
-  fallbackContextUri String    @default("") // spotify:playlist:... | album | artist
-  deviceId           String    @default("") // target device; empty = active device
-  deviceName         String    @default("")
-  accessToken        String?
-  refreshToken       String?
-  tokenExpiresAt     DateTime?
-  connectedName      String? // Spotify display name once authorized
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
 }
 
 enum AccountType {

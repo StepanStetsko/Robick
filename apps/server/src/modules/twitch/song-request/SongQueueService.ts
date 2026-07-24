@@ -14,6 +14,8 @@ import type { SongBlock } from "../../../generated/prisma/client.js";
 import {
   normalizeCommandName,
   normalizeSongRequestMessages,
+  type FallbackOverlayConfig,
+  type FallbackTrack,
   type OverlayState,
   type SongBlockDto,
   type SongQueueState,
@@ -59,6 +61,9 @@ export class SongQueueService {
   private paused = true;
   private skipVoters = new Set<string>();
   private votedSongId: string | null = null;
+  // The track the overlay is currently playing from the YouTube-mix fallback
+  // (reported by the overlay; used for the admin display + "ban track").
+  private fallbackNow: FallbackTrack | null = null;
 
   constructor(private readonly repo: SongRequestRepository) {}
 
@@ -79,6 +84,9 @@ export class SongQueueService {
       pauseCommand: row.pauseCommand,
       skipVotesNeeded: row.skipVotesNeeded,
       historyLimit: row.historyLimit,
+      fallbackEnabled: row.fallbackEnabled,
+      fallbackSeed: row.fallbackSeed,
+      fallbackBlockKeywords: row.fallbackBlockKeywords,
       messages: normalizeSongRequestMessages(row.messages),
       updatedAt: row.updatedAt.toISOString(),
     };
@@ -106,6 +114,9 @@ export class SongQueueService {
         : {}),
       ...(input.historyLimit !== undefined
         ? { historyLimit: Math.max(0, Math.round(input.historyLimit)) }
+        : {}),
+      ...(input.fallbackSeed !== undefined
+        ? { fallbackSeed: input.fallbackSeed.trim() }
         : {}),
     };
 
@@ -280,19 +291,62 @@ export class SongQueueService {
       paused: this.paused,
       skipVotes: this.currentSkipVotes(playing?.id ?? null),
       skipVotesNeeded: settings.skipVotesNeeded,
+      fallbackNow: playing ? null : this.fallbackNow,
     };
   }
 
-  /** Overlay state: promote next if idle, plus playback controls. */
+  /** Overlay state: promote next if idle, plus playback controls + fallback. */
   async getOverlayState(): Promise<OverlayState> {
     const current = await this.ensureCurrent();
     const settings = await this.getSettings();
+    const fallback = await this.buildFallbackConfig(settings);
+    // The fallback only makes sense while nothing is queued/playing.
     return {
       current,
       paused: this.paused,
       skipVotes: this.currentSkipVotes(current?.id ?? null),
       skipVotesNeeded: settings.skipVotesNeeded,
+      fallback,
+      fallbackNow: current ? null : this.fallbackNow,
     };
+  }
+
+  private async buildFallbackConfig(
+    settings: SongRequestSettingsDto,
+  ): Promise<FallbackOverlayConfig> {
+    const blocks = await this.repo.listBlocks();
+    return {
+      enabled: settings.fallbackEnabled,
+      mixListId: deriveMixListId(settings.fallbackSeed),
+      blockKeywords: parseKeywords(settings.fallbackBlockKeywords),
+      blockedVideoIds: blocks.map((b) => b.videoId),
+    };
+  }
+
+  /** Overlay reports the track it's currently playing from the mix fallback. */
+  setFallbackNow(track: FallbackTrack | null): void {
+    const next = track && track.videoId ? track : null;
+    if (next?.videoId === this.fallbackNow?.videoId) {
+      return;
+    }
+    this.fallbackNow = next;
+    // Push to the admin panel (realtime) so the «Фон» tab shows it live.
+    void this.publishState();
+  }
+
+  /** Admin "ban track": block the current fallback track so it's skipped. */
+  async banFallbackCurrent(): Promise<{ ok: boolean; videoId?: string }> {
+    const now = this.fallbackNow;
+    if (!now) {
+      return { ok: false };
+    }
+    await this.repo.addBlock({
+      videoId: now.videoId,
+      url: canonicalYouTubeUrl(now.videoId),
+      title: now.title,
+      addedBy: "fallback-ban",
+    });
+    return { ok: true, videoId: now.videoId };
   }
 
   private currentSkipVotes(playingId: string | null): number {
@@ -444,6 +498,39 @@ function toDto(row: SongRequest): SongRequestDto {
     createdAt: row.createdAt.toISOString(),
     playedAt: row.playedAt ? row.playedAt.toISOString() : null,
   };
+}
+
+/**
+ * Turn a fallback seed into a YouTube "mix"/radio playlist id the overlay can
+ * load. A video → RD<videoId> (an endless auto-recommended radio). A raw
+ * playlist/mix id (PL…, RD…, OLAK…, UU…) is used as-is. Otherwise null.
+ */
+function deriveMixListId(seed: string): string | null {
+  const raw = seed.trim();
+  if (!raw) {
+    return null;
+  }
+
+  const videoId = parseYouTubeVideoId(raw);
+  if (videoId) {
+    return `RD${videoId}`;
+  }
+
+  // A playlist/mix link or bare list id.
+  let listId: string | null = null;
+  try {
+    listId = new URL(raw).searchParams.get("list");
+  } catch {
+    listId = /^(PL|RD|OLAK|UU|LL|FL)[A-Za-z0-9_-]+$/.test(raw) ? raw : null;
+  }
+  return listId && /^[A-Za-z0-9_-]+$/.test(listId) ? listId : null;
+}
+
+function parseKeywords(value: string): string[] {
+  return value
+    .split(/[\n,]+/)
+    .map((k) => k.trim().toLowerCase())
+    .filter(Boolean);
 }
 
 function toBlockDto(row: SongBlock): SongBlockDto {

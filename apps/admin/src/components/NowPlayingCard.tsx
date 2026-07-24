@@ -20,15 +20,15 @@ type NowPlayingCardProps = {
    * is clean while paused; the admin preview leaves it false.
    */
   animateHide?: boolean;
-  /** Idle but Spotify fallback is playing — show a Spotify label instead. */
-  spotifyFallback?: boolean;
+  /** The current track comes from the YouTube-mix fallback (radio). */
+  fallback?: boolean;
   /** Current skip-vote tally (shows a chip when > 0). */
   skipVotes?: number;
   skipNeeded?: number;
 };
 
 const ACCENT = "#22c55e";
-const SPOTIFY_COLOR = "#1db954";
+const RADIO_COLOR = "#38bdf8";
 const PAUSE_COLOR = "#f59e0b";
 const CARD_WIDTH = 420;
 
@@ -40,7 +40,7 @@ export function NowPlayingCard({
   idle = false,
   paused = false,
   animateHide = false,
-  spotifyFallback = false,
+  fallback = false,
   skipVotes = 0,
   skipNeeded = 0,
 }: NowPlayingCardProps) {
@@ -119,16 +119,14 @@ export function NowPlayingCard({
             }}
           >
             {idle ? (
-              spotifyFallback ? (
-                <>
-                  <Equalizer color={SPOTIFY_COLOR} />
-                  <span style={labelStyle(SPOTIFY_COLOR)}>♫ Spotify</span>
-                </>
-              ) : (
-                <span style={labelStyle("#6b7280")}>Черга порожня</span>
-              )
+              <span style={labelStyle("#6b7280")}>Черга порожня</span>
             ) : paused ? (
               <span style={labelStyle(PAUSE_COLOR)}>⏸ Пауза</span>
+            ) : fallback ? (
+              <>
+                <Equalizer color={RADIO_COLOR} />
+                <span style={labelStyle(RADIO_COLOR)}>📻 Радіо</span>
+              </>
             ) : (
               <>
                 <Equalizer />
@@ -164,14 +162,10 @@ export function NowPlayingCard({
               textOverflow: "ellipsis",
             }}
           >
-            {idle
-              ? spotifyFallback
-                ? "Spotify — фонова музика"
-                : "Замов пісню — !пісня <youtube>"
-              : title || "Без назви"}
+            {idle ? "Замов пісню — !пісня <youtube>" : title || "Без назви"}
           </div>
 
-          {!idle && requestedBy ? (
+          {!idle && (requestedBy || fallback) ? (
             <div
               style={{
                 fontSize: 13,
@@ -182,7 +176,7 @@ export function NowPlayingCard({
                 textOverflow: "ellipsis",
               }}
             >
-              ♪ від {requestedBy}
+              {fallback ? "📻 фонова музика" : `♪ від ${requestedBy}`}
             </div>
           ) : null}
         </div>

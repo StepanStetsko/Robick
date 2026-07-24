@@ -26,8 +26,17 @@ export type SongRequestSettings = {
   pauseCommand: string;
   skipVotesNeeded: number;
   historyLimit: number;
+  fallbackEnabled: boolean;
+  fallbackSeed: string;
+  fallbackBlockKeywords: string;
   messages: SongRequestMessages;
   updatedAt: string;
+};
+
+export type FallbackTrack = {
+  videoId: string;
+  title: string | null;
+  author: string | null;
 };
 
 export type UpdateSongRequestSettingsInput = Partial<
@@ -65,4 +74,5 @@ export type SongQueueState = {
   paused: boolean;
   skipVotes: number;
   skipVotesNeeded: number;
+  fallbackNow: FallbackTrack | null;
 };

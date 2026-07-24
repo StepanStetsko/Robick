@@ -27,8 +27,6 @@ import { SongQueueService } from "./song-request/SongQueueService.js";
 import { SongRequestCommandRouter } from "./song-request/SongRequestCommandRouter.js";
 import { DonatelloRepository } from "./donatello/DonatelloRepository.js";
 import { DonatelloService } from "./donatello/DonatelloService.js";
-import { SpotifyRepository } from "./spotify/SpotifyRepository.js";
-import { SpotifyService } from "./spotify/SpotifyService.js";
 import { SupporterRepository } from "./supporter/SupporterRepository.js";
 import { SupporterService } from "./supporter/SupporterService.js";
 import { SupporterBonusCommandRouter } from "./supporter/SupporterBonusCommandRouter.js";
@@ -268,15 +266,16 @@ const donatelloService = new DonatelloService(
   twitchChatService,
 );
 
-// Spotify Connect fallback: plays a playlist on the streamer's Spotify desktop
-// app when the YouTube queue is idle. A watchdog pauses it if the overlay (OBS
-// source) stops polling. The coordinator itself is driven from the overlay
-// /state poll (see twitch.routes.ts).
-const spotifyRepository = new SpotifyRepository();
-const spotifyService = new SpotifyService(spotifyRepository);
-setInterval(() => {
-  void spotifyService.tickWatchdog();
-}, 3000);
+// Periodically pull Donatello subscription supporters (if the API token is set).
+if (donatelloService.hasApiToken()) {
+  void donatelloService.syncSubscribers();
+  setInterval(
+    () => {
+      void donatelloService.syncSubscribers();
+    },
+    10 * 60_000,
+  );
+}
 
 // The help list and guide read live command names from all feature settings,
 // so they are created after song-request and supporter services exist.
@@ -444,8 +443,6 @@ export const twitchRuntimeContainer = {
   songRequestCommandRouter,
   donatelloRepository,
   donatelloService,
-  spotifyRepository,
-  spotifyService,
   supporterRepository,
   supporterService,
   supporterBonusCommandRouter,

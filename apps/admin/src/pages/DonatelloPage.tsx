@@ -2,15 +2,18 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   getDonatelloDonations,
   getDonatelloSettings,
+  getDonatelloSubscribers,
+  syncDonatelloSubscribers,
   updateDonatelloSettings,
 } from "../api/donatello";
 import type {
   DonatelloDonation,
   DonatelloMessages,
   DonatelloSettings,
+  DonatelloSubscriber,
 } from "../types/donatello";
 
-type TabId = "settings" | "messages" | "donations";
+type TabId = "settings" | "messages" | "donations" | "subscribers";
 
 type FormState = {
   enabled: boolean;
@@ -44,6 +47,8 @@ export function DonatelloPage() {
   const [activeTab, setActiveTab] = useState<TabId>("settings");
   const [form, setForm] = useState<FormState | null>(null);
   const [donations, setDonations] = useState<DonatelloDonation[]>([]);
+  const [subscribers, setSubscribers] = useState<DonatelloSubscriber[]>([]);
+  const [syncingSubs, setSyncingSubs] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,6 +137,26 @@ export function DonatelloPage() {
     }
   }
 
+  async function refreshSubscribers() {
+    try {
+      setSubscribers(await getDonatelloSubscribers());
+    } catch {
+      // keep previous list
+    }
+  }
+
+  async function handleSyncSubscribers() {
+    setSyncingSubs(true);
+    setError(null);
+    try {
+      setSubscribers(await syncDonatelloSubscribers());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не вдалося синхронізувати");
+    } finally {
+      setSyncingSubs(false);
+    }
+  }
+
   return (
     <div className="page">
       <div className="card">
@@ -196,6 +221,22 @@ export function DonatelloPage() {
               >
                 Донати
               </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={activeTab === "subscribers"}
+                className={
+                  activeTab === "subscribers"
+                    ? "tab-button tab-button--active"
+                    : "tab-button"
+                }
+                onClick={() => {
+                  setActiveTab("subscribers");
+                  void refreshSubscribers();
+                }}
+              >
+                Підписники
+              </button>
             </div>
 
             {activeTab === "donations" ? (
@@ -227,6 +268,68 @@ export function DonatelloPage() {
                           </td>
                           <td>{OUTCOME_LABELS[d.outcome] ?? d.outcome}</td>
                           <td>{d.songTitle ?? d.message ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            ) : activeTab === "subscribers" ? (
+              <div className="tab-panel">
+                <p
+                  className="tab-panel__intro"
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <span>
+                    Активні підписники Donatello (синхронізуються автоматично що
+                    ~10 хв, якщо в <code>.env</code> заданий{" "}
+                    <code>DONATELLO_API_TOKEN</code>).
+                  </span>
+                  <button
+                    type="button"
+                    className="button button--ghost button--small"
+                    onClick={() => void handleSyncSubscribers()}
+                    disabled={syncingSubs}
+                  >
+                    {syncingSubs ? "Синхронізація..." : "Оновити зараз"}
+                  </button>
+                </p>
+                {subscribers.length === 0 ? (
+                  <div className="state-block">
+                    Підписників немає (або токен не заданий / ще не
+                    синхронізувалось).
+                  </div>
+                ) : (
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Нік</th>
+                        <th>Twitch</th>
+                        <th>Рівень</th>
+                        <th>Сума</th>
+                        <th>Статус</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {subscribers.map((s) => (
+                        <tr key={s.id}>
+                          <td>{s.clientName ?? "—"}</td>
+                          <td>{s.twitchName ?? "—"}</td>
+                          <td>{s.tierName ?? "—"}</td>
+                          <td>
+                            {s.amount ?? "—"} {s.currency ?? ""}
+                          </td>
+                          <td>
+                            {s.isActive ? "активний" : "неактивний"}
+                            {s.subscriptionStatus
+                              ? ` (${s.subscriptionStatus})`
+                              : ""}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

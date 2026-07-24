@@ -130,3 +130,12 @@ export async function removeSongBlock(id: string): Promise<SongBlockEntry[]> {
 
   return result.data;
 }
+
+export async function banFallbackTrack(): Promise<SongBlockEntry[]> {
+  const result = await http<ApiResponse<SongBlockEntry[]>>(
+    "/api/twitch/song-request/fallback/ban",
+    { method: "POST" },
+  );
+
+  return result.data;
+}

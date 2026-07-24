@@ -1,3 +1,4 @@
+import { env } from "../../../config/env.js";
 import { logger } from "../../../core/logger/logger.js";
 import type { TwitchChatService } from "../TwitchChatService.js";
 import type { SongQueueService } from "../song-request/SongQueueService.js";
@@ -8,12 +9,16 @@ import {
   type DonatelloCallbackBody,
   type DonatelloDonationDto,
   type DonatelloSettingsDto,
+  type DonatelloSubscriberDto,
   type UpdateDonatelloSettingsInput,
 } from "./donatello.types.js";
 import type {
   DonatelloDonation,
   DonatelloSettings,
+  DonatelloSubscriber,
 } from "../../../generated/prisma/client.js";
+
+const DONATELLO_API_BASE = "https://donatello.to/api/v1";
 
 const SETTINGS_TTL_MS = 30_000;
 
@@ -75,6 +80,77 @@ export class DonatelloService {
   async listDonations(limit?: number): Promise<DonatelloDonationDto[]> {
     const rows = await this.repo.listDonations(limit);
     return rows.map(toDonationDto);
+  }
+
+  // ----- Subscribers (REST sync via X-Token) -----
+
+  hasApiToken(): boolean {
+    return Boolean(env.DONATELLO_API_TOKEN);
+  }
+
+  async listSubscribers(): Promise<DonatelloSubscriberDto[]> {
+    const rows = await this.repo.listSubscribers();
+    return rows.map(toSubscriberDto);
+  }
+
+  /**
+   * Pull active subscribers from Donatello (GET /subscribers?isActive=true,
+   * paginated) and upsert them. Marks ones no longer returned as inactive.
+   */
+  async syncSubscribers(): Promise<{ ok: boolean; count: number; error?: string }> {
+    const token = env.DONATELLO_API_TOKEN;
+    if (!token) {
+      return { ok: false, count: 0, error: "DONATELLO_API_TOKEN не заданий" };
+    }
+
+    try {
+      const seen: string[] = [];
+      let page = 0;
+      const size = 50;
+      // Cap pages defensively so a bad `pages` value can't loop forever.
+      for (let guard = 0; guard < 50; guard += 1) {
+        const res = await fetch(
+          `${DONATELLO_API_BASE}/subscribers?isActive=true&page=${page}&size=${size}`,
+          { headers: { "X-Token": token } },
+        );
+        if (!res.ok) {
+          return {
+            ok: false,
+            count: seen.length,
+            error: `Donatello ${res.status}`,
+          };
+        }
+
+        const data = (await res.json()) as {
+          subscribers?: unknown;
+          pages?: number;
+          last?: boolean;
+        };
+        const list = Array.isArray(data.subscribers) ? data.subscribers : [];
+
+        for (const raw of list) {
+          const sub = parseSubscriber(raw);
+          if (!sub) {
+            continue;
+          }
+          seen.push(sub.pubClientId);
+          await this.repo.upsertSubscriber(sub);
+        }
+
+        const pages = typeof data.pages === "number" ? data.pages : page + 1;
+        if (data.last === true || page + 1 >= pages || list.length === 0) {
+          break;
+        }
+        page += 1;
+      }
+
+      await this.repo.deactivateMissing(seen);
+      return { ok: true, count: seen.length };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "sync failed";
+      logger.warn("Donatello subscribers sync failed", error);
+      return { ok: false, count: 0, error: message };
+    }
   }
 
   /**
@@ -201,6 +277,58 @@ function toSettingsDto(row: DonatelloSettings): DonatelloSettingsDto {
     thankYouInChat: row.thankYouInChat,
     messages: normalizeDonatelloMessages(row.messages),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+type ParsedSubscriber = {
+  pubClientId: string;
+  clientName: string | null;
+  tierName: string | null;
+  amount: number | null;
+  currency: string | null;
+  twitchName: string | null;
+  subscriptionStatus: string | null;
+  isActive: boolean;
+  successPayments: number | null;
+};
+
+function parseSubscriber(raw: unknown): ParsedSubscriber | null {
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+  const r = raw as Record<string, unknown>;
+  const pubClientId = asString(r.pubClientId)?.trim();
+  if (!pubClientId) {
+    return null;
+  }
+  const successPayments = asNumber(r.successPayments);
+  return {
+    pubClientId,
+    clientName: asString(r.clientName)?.trim() || null,
+    tierName: asString(r.tierName)?.trim() || null,
+    amount: asNumber(r.amount),
+    currency: asString(r.currency)?.trim().toUpperCase() || null,
+    twitchName: asString(r.twitchName)?.trim().toLowerCase() || null,
+    subscriptionStatus: asString(r.subscriptionStatus)?.trim() || null,
+    isActive: r.isActive !== false,
+    successPayments:
+      successPayments === null ? null : Math.round(successPayments),
+  };
+}
+
+function toSubscriberDto(row: DonatelloSubscriber): DonatelloSubscriberDto {
+  return {
+    id: row.id,
+    pubClientId: row.pubClientId,
+    clientName: row.clientName,
+    tierName: row.tierName,
+    amount: row.amount,
+    currency: row.currency,
+    twitchName: row.twitchName,
+    subscriptionStatus: row.subscriptionStatus,
+    isActive: row.isActive,
+    successPayments: row.successPayments,
+    lastSyncedAt: row.lastSyncedAt.toISOString(),
   };
 }
 

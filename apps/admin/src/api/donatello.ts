@@ -2,6 +2,7 @@ import { http } from "./http";
 import type {
   DonatelloDonation,
   DonatelloSettings,
+  DonatelloSubscriber,
   UpdateDonatelloSettingsInput,
 } from "../types/donatello";
 
@@ -34,6 +35,24 @@ export async function getDonatelloDonations(): Promise<DonatelloDonation[]> {
   const result = await http<ApiResponse<DonatelloDonation[]>>(
     "/api/twitch/donatello/donations",
     { method: "GET" },
+  );
+
+  return result.data;
+}
+
+export async function getDonatelloSubscribers(): Promise<DonatelloSubscriber[]> {
+  const result = await http<ApiResponse<DonatelloSubscriber[]>>(
+    "/api/twitch/donatello/subscribers",
+    { method: "GET" },
+  );
+
+  return result.data;
+}
+
+export async function syncDonatelloSubscribers(): Promise<DonatelloSubscriber[]> {
+  const result = await http<ApiResponse<DonatelloSubscriber[]>>(
+    "/api/twitch/donatello/subscribers/sync",
+    { method: "POST" },
   );
 
   return result.data;

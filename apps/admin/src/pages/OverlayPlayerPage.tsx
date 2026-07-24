@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { NowPlayingCard } from "../components/NowPlayingCard";
 
 // Public OBS overlay: plays the song-request queue in order via the YouTube
-// IFrame Player API, but shows a minimalist "now playing" music card instead of
-// the video (the player is kept in the DOM, hidden, so only the audio is heard).
-// Reads pause / skip-vote state from the server so mods & chat can control it.
-// Add as a Browser Source in OBS pointing at /overlay/player. Uses plain fetch
-// against the public (no-auth) endpoints — no admin cookie.
+// IFrame Player API, showing a minimalist "now playing" card (the player is
+// hidden, so only the audio is heard). When the queue is empty it falls back to
+// a YouTube "mix" (radio) seeded in settings — endless auto-recommended tracks —
+// and skips any track that matches the block keywords / blocklist (e.g. Russian
+// songs). Add as a Browser Source in OBS pointing at /overlay/player.
 
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL?.trim() || "http://localhost:4000";
@@ -22,21 +22,36 @@ type SongDto = {
   requestedBy: string | null;
 };
 
+type FallbackConfig = {
+  enabled: boolean;
+  mixListId: string | null;
+  blockKeywords: string[];
+  blockedVideoIds: string[];
+};
+
 type OverlayState = {
   current: SongDto | null;
   paused: boolean;
   skipVotes: number;
   skipVotesNeeded: number;
-  spotifyActive?: boolean;
+  fallback: FallbackConfig;
 };
 
-// Minimal shape of the YouTube IFrame Player we use.
+type VideoData = { video_id?: string; title?: string; author?: string };
+
 type YTPlayer = {
   loadVideoById: (videoId: string) => void;
+  loadPlaylist: (options: {
+    list: string;
+    listType: string;
+    index?: number;
+  }) => void;
   playVideo: () => void;
   pauseVideo: () => void;
+  nextVideo: () => void;
   getCurrentTime: () => number;
   getDuration: () => number;
+  getVideoData: () => VideoData;
   destroy: () => void;
 };
 
@@ -54,9 +69,7 @@ declare global {
 }
 
 async function fetchState(): Promise<OverlayState | null> {
-  // ?overlay=1 marks this as the real OBS source, which drives the Spotify
-  // fallback server-side (and gates it on the overlay being alive).
-  const res = await fetch(`${API_BASE}/api/public/song-queue/state?overlay=1`);
+  const res = await fetch(`${API_BASE}/api/public/song-queue/state`);
   const json = (await res.json()) as { ok: boolean; data: OverlayState | null };
   return json.data ?? null;
 }
@@ -72,24 +85,45 @@ async function advance(): Promise<SongDto | null> {
   return json.data?.current ?? null;
 }
 
+function reportFallback(track: VideoData | null): void {
+  void fetch(`${API_BASE}/api/public/song-queue/fallback-state`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(
+      track
+        ? {
+            videoId: track.video_id ?? "",
+            title: track.title ?? null,
+            author: track.author ?? null,
+          }
+        : { videoId: "" },
+    ),
+  }).catch(() => {
+    // best-effort — retried on the next track change
+  });
+}
+
+type DisplayTrack = {
+  title: string | null;
+  thumbnailUrl: string | null;
+  requestedBy: string | null;
+  fallback: boolean;
+};
+
 export function OverlayPlayerPage() {
   const playerRef = useRef<YTPlayer | null>(null);
   const loadedVideoId = useRef<string | null>(null);
+  const loadedMixListId = useRef<string | null>(null);
   const appliedPaused = useRef(false);
-  // Desired pause state, mirrored into a ref so the YT state-change callback can
-  // re-assert it (autoplay after loadVideoById races an immediate pauseVideo).
   const pausedRef = useRef(true);
-  const [nowPlaying, setNowPlaying] = useState<SongDto | null>(null);
-  const [paused, setPaused] = useState(false);
+  const modeRef = useRef<"queue" | "fallback" | "idle">("idle");
+  const fallbackRef = useRef<FallbackConfig | null>(null);
+  const reportedVideoId = useRef<string | null>(null);
+  const [display, setDisplay] = useState<DisplayTrack | null>(null);
+  const [paused, setPaused] = useState(true);
   const [skipVotes, setSkipVotes] = useState(0);
   const [skipNeeded, setSkipNeeded] = useState(0);
-  const [spotifyActive, setSpotifyActive] = useState(false);
   const [progress, setProgress] = useState(0);
-  const nowPlayingRef = useRef<SongDto | null>(null);
-
-  useEffect(() => {
-    nowPlayingRef.current = nowPlaying;
-  }, [nowPlaying]);
 
   // The admin app paints a gradient on <body>; force it transparent here so the
   // OBS browser source shows only the card over the live scene.
@@ -109,20 +143,63 @@ export function OverlayPlayerPage() {
     let progressTimer: ReturnType<typeof setInterval> | null = null;
     let disposed = false;
 
-    function applySong(song: SongDto | null) {
-      if (disposed) {
-        return;
+    function isBlocked(data: VideoData): boolean {
+      const cfg = fallbackRef.current;
+      if (!cfg) {
+        return false;
       }
-      setNowPlaying(song);
+      if (data.video_id && cfg.blockedVideoIds.includes(data.video_id)) {
+        return true;
+      }
+      const haystack = `${data.title ?? ""} ${data.author ?? ""}`.toLowerCase();
+      return cfg.blockKeywords.some((kw) => kw && haystack.includes(kw));
+    }
 
-      if (song && song.videoId !== loadedVideoId.current) {
+    function playQueueSong(song: SongDto) {
+      modeRef.current = "queue";
+      loadedMixListId.current = null;
+      if (reportedVideoId.current) {
+        reportedVideoId.current = null;
+        reportFallback(null);
+      }
+      setDisplay({
+        title: song.title,
+        thumbnailUrl: song.thumbnailUrl,
+        requestedBy: song.requestedBy,
+        fallback: false,
+      });
+      if (song.videoId !== loadedVideoId.current) {
         loadedVideoId.current = song.videoId;
         appliedPaused.current = false; // loadVideoById autoplays
         setProgress(0);
         playerRef.current?.loadVideoById(song.videoId);
-      } else if (!song) {
-        loadedVideoId.current = null;
+      }
+    }
+
+    function startFallback(mixListId: string) {
+      modeRef.current = "fallback";
+      loadedVideoId.current = null;
+      if (mixListId !== loadedMixListId.current) {
+        loadedMixListId.current = mixListId;
+        appliedPaused.current = false;
         setProgress(0);
+        playerRef.current?.loadPlaylist({
+          list: mixListId,
+          listType: "playlist",
+          index: 0,
+        });
+      }
+    }
+
+    function goIdle() {
+      modeRef.current = "idle";
+      loadedVideoId.current = null;
+      loadedMixListId.current = null;
+      setProgress(0);
+      setDisplay(null);
+      if (reportedVideoId.current) {
+        reportedVideoId.current = null;
+        reportFallback(null);
       }
     }
 
@@ -145,25 +222,84 @@ export function OverlayPlayerPage() {
       }
     }
 
+    /** In fallback mode: skip blocked tracks, else publish the current one. */
+    function handleFallbackTrack() {
+      const player = playerRef.current;
+      if (!player || modeRef.current !== "fallback") {
+        return;
+      }
+      let data: VideoData;
+      try {
+        data = player.getVideoData();
+      } catch {
+        return;
+      }
+      if (!data.video_id) {
+        return;
+      }
+      if (isBlocked(data)) {
+        try {
+          player.nextVideo();
+        } catch {
+          // ignore
+        }
+        return;
+      }
+      setDisplay({
+        title: data.title ?? null,
+        thumbnailUrl: `https://i.ytimg.com/vi/${data.video_id}/hqdefault.jpg`,
+        requestedBy: null,
+        fallback: true,
+      });
+      if (data.video_id !== reportedVideoId.current) {
+        reportedVideoId.current = data.video_id;
+        reportFallback(data);
+      }
+    }
+
     async function syncState() {
       try {
         const state = await fetchState();
         if (!state || disposed) {
           return;
         }
-        applySong(state.current);
-        applyPause(state.paused);
+        fallbackRef.current = state.fallback;
         setSkipVotes(state.skipVotes);
         setSkipNeeded(state.skipVotesNeeded);
-        setSpotifyActive(Boolean(state.spotifyActive));
+        applyPause(state.paused);
+
+        if (state.current) {
+          playQueueSong(state.current);
+        } else if (
+          state.fallback.enabled &&
+          state.fallback.mixListId &&
+          !state.paused
+        ) {
+          startFallback(state.fallback.mixListId);
+          // Re-check the current mix track against a possibly-updated blocklist.
+          handleFallbackTrack();
+        } else {
+          goIdle();
+        }
       } catch {
         // ignore — retried on the next tick
       }
     }
 
     async function onEnded() {
+      if (modeRef.current === "fallback") {
+        try {
+          playerRef.current?.nextVideo();
+        } catch {
+          // ignore
+        }
+        return;
+      }
       try {
-        applySong(await advance());
+        const next = await advance();
+        if (next) {
+          playQueueSong(next);
+        }
       } catch {
         // Network blip — the state poll will recover.
       }
@@ -171,7 +307,7 @@ export function OverlayPlayerPage() {
 
     function pollProgress() {
       const player = playerRef.current;
-      if (!player || !nowPlayingRef.current) {
+      if (!player || modeRef.current === "idle") {
         return;
       }
       try {
@@ -192,9 +328,6 @@ export function OverlayPlayerPage() {
       playerRef.current = new window.YT.Player("yt-player", {
         width: "100%",
         height: "100%",
-        // Pin the host + origin so the IFrame JS API works on a real domain
-        // (over HTTPS). Without an explicit origin, playVideo/loadVideoById can
-        // be silently ignored once the overlay is served from adm.<domain>.
         host: "https://www.youtube.com",
         playerVars: {
           autoplay: 1,
@@ -210,23 +343,31 @@ export function OverlayPlayerPage() {
               void onEnded();
               return;
             }
-            // A freshly loaded video autoplays; if we're meant to be paused
-            // (e.g. right after a server restart), pause it as soon as it starts.
-            if (
-              event.data === window.YT?.PlayerState.PLAYING &&
-              pausedRef.current
-            ) {
-              appliedPaused.current = true;
-              try {
-                playerRef.current?.pauseVideo();
-              } catch {
-                // player not ready — the state poll will retry
+            if (event.data === window.YT?.PlayerState.PLAYING) {
+              // Re-assert pause (autoplay races loadVideoById/loadPlaylist).
+              if (pausedRef.current) {
+                appliedPaused.current = true;
+                try {
+                  playerRef.current?.pauseVideo();
+                } catch {
+                  // ignore
+                }
+                return;
               }
+              handleFallbackTrack();
             }
           },
           onError: (event: { data: number }) => {
             // eslint-disable-next-line no-console
             console.error("[overlay] YouTube player error", event.data);
+            // In fallback, a bad video shouldn't stall the radio.
+            if (modeRef.current === "fallback") {
+              try {
+                playerRef.current?.nextVideo();
+              } catch {
+                // ignore
+              }
+            }
           },
         },
       });
@@ -288,14 +429,14 @@ export function OverlayPlayerPage() {
       </div>
 
       <NowPlayingCard
-        title={nowPlaying?.title ?? null}
-        thumbnailUrl={nowPlaying?.thumbnailUrl ?? null}
-        requestedBy={nowPlaying?.requestedBy ?? null}
+        title={display?.title ?? null}
+        thumbnailUrl={display?.thumbnailUrl ?? null}
+        requestedBy={display?.requestedBy ?? null}
         progress={progress}
-        idle={!nowPlaying}
+        idle={!display}
         paused={paused}
         animateHide
-        spotifyFallback={!nowPlaying && spotifyActive}
+        fallback={display?.fallback ?? false}
         skipVotes={skipVotes}
         skipNeeded={skipNeeded}
       />

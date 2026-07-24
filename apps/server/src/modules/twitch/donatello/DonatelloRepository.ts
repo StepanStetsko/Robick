@@ -3,6 +3,7 @@ import { Prisma } from "../../../generated/prisma/client.js";
 import type {
   DonatelloDonation,
   DonatelloSettings,
+  DonatelloSubscriber,
   PrismaClient,
 } from "../../../generated/prisma/client.js";
 import {
@@ -86,6 +87,41 @@ export class DonatelloRepository {
     return this.db.donatelloDonation.findMany({
       orderBy: { createdAt: "desc" },
       take: limit,
+    });
+  }
+
+  // ----- Subscribers -----
+
+  async upsertSubscriber(input: {
+    pubClientId: string;
+    clientName: string | null;
+    tierName: string | null;
+    amount: number | null;
+    currency: string | null;
+    twitchName: string | null;
+    subscriptionStatus: string | null;
+    isActive: boolean;
+    successPayments: number | null;
+  }): Promise<void> {
+    const data = { ...input, lastSyncedAt: new Date() };
+    await this.db.donatelloSubscriber.upsert({
+      where: { pubClientId: input.pubClientId },
+      create: data,
+      update: data,
+    });
+  }
+
+  async listSubscribers(): Promise<DonatelloSubscriber[]> {
+    return this.db.donatelloSubscriber.findMany({
+      orderBy: [{ isActive: "desc" }, { amount: "desc" }],
+    });
+  }
+
+  /** Mark subscribers not seen in the latest active sync as inactive. */
+  async deactivateMissing(activePubClientIds: string[]): Promise<void> {
+    await this.db.donatelloSubscriber.updateMany({
+      where: { pubClientId: { notIn: activePubClientIds }, isActive: true },
+      data: { isActive: false },
     });
   }
 }

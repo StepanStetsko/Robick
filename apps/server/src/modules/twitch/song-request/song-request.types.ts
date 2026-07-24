@@ -28,6 +28,9 @@ export type SongRequestSettingsDto = {
   pauseCommand: string;
   skipVotesNeeded: number;
   historyLimit: number;
+  fallbackEnabled: boolean;
+  fallbackSeed: string;
+  fallbackBlockKeywords: string;
   messages: SongRequestMessages;
   updatedAt: string;
 };
@@ -67,6 +70,26 @@ export type SongQueueState = {
   paused: boolean;
   skipVotes: number;
   skipVotesNeeded: number;
+  /** The track the overlay is playing from the mix fallback (for admin/ban). */
+  fallbackNow: FallbackTrack | null;
+};
+
+/** The track the overlay is currently playing from the YouTube-mix fallback. */
+export type FallbackTrack = {
+  videoId: string;
+  title: string | null;
+  author: string | null;
+};
+
+/** What the overlay needs to run the YouTube-mix fallback + skip filter. */
+export type FallbackOverlayConfig = {
+  enabled: boolean;
+  /** YouTube "mix"/radio playlist id (e.g. RD<videoId>), or null if unset. */
+  mixListId: string | null;
+  /** Lowercased keywords: skip a track if its title/author contains any. */
+  blockKeywords: string[];
+  /** Video ids to skip (from the blocklist / "ban track"). */
+  blockedVideoIds: string[];
 };
 
 export type OverlayState = {
@@ -74,6 +97,8 @@ export type OverlayState = {
   paused: boolean;
   skipVotes: number;
   skipVotesNeeded: number;
+  fallback: FallbackOverlayConfig;
+  fallbackNow: FallbackTrack | null;
 };
 
 export type SongRequestViewerInput = {

@@ -32,9 +32,8 @@ const PUBLIC_PATHS = new Set<string>([
   "/api/public/song-queue/history",
   // Donatello «Колбеки» webhook (secured by the X-Key shared secret, not a cookie).
   "/api/public/donatello/callback",
-  // Spotify OAuth (popup redirect + Spotify's callback — no admin cookie).
-  "/api/auth/spotify/login",
-  "/api/auth/spotify/callback",
+  // Overlay reports its current fallback (radio) track — no admin cookie.
+  "/api/public/song-queue/fallback-state",
 ]);
 
 function isPublic(request: FastifyRequest) {

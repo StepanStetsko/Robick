@@ -19,6 +19,20 @@ export type UpdateDonatelloSettingsInput = Partial<
   Omit<DonatelloSettingsDto, "updatedAt">
 >;
 
+export type DonatelloSubscriberDto = {
+  id: string;
+  pubClientId: string;
+  clientName: string | null;
+  tierName: string | null;
+  amount: number | null;
+  currency: string | null;
+  twitchName: string | null;
+  subscriptionStatus: string | null;
+  isActive: boolean;
+  successPayments: number | null;
+  lastSyncedAt: string;
+};
+
 export type DonatelloDonationDto = {
   id: string;
   pubId: string;

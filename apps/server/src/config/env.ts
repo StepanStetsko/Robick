@@ -39,14 +39,8 @@ const envSchema = z.object({
 
   // Donatello «Колбеки» shared secret (X-Key header). Empty = webhook disabled.
   DONATELLO_WEBHOOK_KEY: z.string().default(""),
-
-  // --- Spotify Connect fallback (OAuth app credentials) ---
-  // From developer.spotify.com dashboard. Empty = Spotify integration disabled.
-  SPOTIFY_CLIENT_ID: z.string().default(""),
-  SPOTIFY_CLIENT_SECRET: z.string().default(""),
-  // Must match a Redirect URI registered in the Spotify app. Empty = derived
-  // from ADMIN_BASE_URL + /api/auth/spotify/callback.
-  SPOTIFY_REDIRECT_URI: z.string().default(""),
+  // Donatello REST API token (X-Token) for pulling subscribers. Empty = off.
+  DONATELLO_API_TOKEN: z.string().default(""),
 
   STORAGE_DIR: z.string().default("./storage"),
 

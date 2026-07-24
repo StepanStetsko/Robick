@@ -78,6 +78,15 @@ export class SongRequestRepository {
         ...(input.historyLimit !== undefined
           ? { historyLimit: input.historyLimit }
           : {}),
+        ...(input.fallbackEnabled !== undefined
+          ? { fallbackEnabled: input.fallbackEnabled }
+          : {}),
+        ...(input.fallbackSeed !== undefined
+          ? { fallbackSeed: input.fallbackSeed }
+          : {}),
+        ...(input.fallbackBlockKeywords !== undefined
+          ? { fallbackBlockKeywords: input.fallbackBlockKeywords }
+          : {}),
         ...(input.messages !== undefined
           ? { messages: input.messages as unknown as Prisma.InputJsonValue }
           : {}),

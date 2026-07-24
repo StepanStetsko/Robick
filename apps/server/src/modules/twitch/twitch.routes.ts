@@ -30,7 +30,6 @@ import type {
   DonatelloCallbackBody,
   UpdateDonatelloSettingsInput,
 } from "./donatello/donatello.types.js";
-import type { UpdateSpotifySettingsInput } from "./spotify/spotify.types.js";
 import type { UpdateSupporterSettingsInput } from "./supporter/supporter.types.js";
 import type { SimulateChatInput } from "./simulation/ChatSimulationService.js";
 import { AccountType } from "../../generated/prisma/client.js";
@@ -1773,6 +1772,20 @@ app.post<{
     };
   });
 
+  // Ban the track the mix fallback is currently playing (adds it to the
+  // blocklist so the overlay skips it on its next poll).
+  app.post("/twitch/song-request/fallback/ban", async (_request, reply) => {
+    const result = await twitchRuntimeContainer.songQueueService.banFallbackCurrent();
+    if (!result.ok) {
+      reply.code(400);
+      return { ok: false, message: "Зараз фонова пісня не грає" };
+    }
+    return {
+      ok: true,
+      data: await twitchRuntimeContainer.songQueueService.listBlocks(),
+    };
+  });
+
   app.get("/twitch/song-request/history", async () => {
     return {
       ok: true,
@@ -2027,83 +2040,25 @@ app.post<{
     };
   });
 
-  // ===== Spotify Connect (fallback music) =====
-
-  app.get("/twitch/spotify/settings", async () => {
+  // Subscription supporters (synced from Donatello via X-Token).
+  app.get("/twitch/donatello/subscribers", async () => {
     return {
       ok: true,
-      data: await twitchRuntimeContainer.spotifyService.getSettings(),
+      data: await twitchRuntimeContainer.donatelloService.listSubscribers(),
     };
   });
 
-  app.patch<{
-    Body: UpdateSpotifySettingsInput;
-  }>("/twitch/spotify/settings", async (request, reply) => {
-    try {
-      const settings = await twitchRuntimeContainer.spotifyService.updateSettings(
-        request.body,
-      );
-      return { ok: true, data: settings };
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to update spotify settings";
+  // Manual re-sync of subscribers.
+  app.post("/twitch/donatello/subscribers/sync", async (_request, reply) => {
+    const result = await twitchRuntimeContainer.donatelloService.syncSubscribers();
+    if (!result.ok) {
       reply.code(400);
-      return { ok: false, message };
+      return { ok: false, message: result.error ?? "Sync failed" };
     }
-  });
-
-  app.get("/twitch/spotify/devices", async () => {
     return {
       ok: true,
-      data: await twitchRuntimeContainer.spotifyService.getDevices(),
+      data: await twitchRuntimeContainer.donatelloService.listSubscribers(),
     };
-  });
-
-  app.post("/twitch/spotify/disconnect", async () => {
-    await twitchRuntimeContainer.spotifyService.disconnect();
-    return {
-      ok: true,
-      data: await twitchRuntimeContainer.spotifyService.getSettings(),
-    };
-  });
-
-  // OAuth: popup → Spotify authorize → callback stores tokens. Public (no cookie).
-  app.get("/auth/spotify/login", async (_request, reply) => {
-    try {
-      const { url } = twitchRuntimeContainer.spotifyService.buildAuthUrl();
-      return reply.redirect(url);
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Spotify not configured";
-      reply.code(400);
-      return { ok: false, message };
-    }
-  });
-
-  app.get<{
-    Querystring: { code?: string; state?: string; error?: string };
-  }>("/auth/spotify/callback", async (request, reply) => {
-    try {
-      if (request.query.error) {
-        return reply
-          .type("text/html")
-          .send(buildSpotifyPopupHtml({ ok: false, error: request.query.error }));
-      }
-
-      const name = await twitchRuntimeContainer.spotifyService.handleCallback(
-        request.query.code,
-        request.query.state,
-      );
-      return reply
-        .type("text/html")
-        .send(buildSpotifyPopupHtml({ ok: true, name }));
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Spotify authorization failed";
-      return reply
-        .type("text/html")
-        .send(buildSpotifyPopupHtml({ ok: false, error: message }));
-    }
   });
 
   // ===== Public overlay endpoints (no auth — OBS browser source) =====
@@ -2123,32 +2078,14 @@ app.post<{
     };
   });
 
-  // Overlay state: current track (promotes next if idle) + pause & skip-vote.
-  // The OBS overlay calls this with ?overlay=1, which also drives the Spotify
-  // fallback (queue idle & not paused → play Spotify; a song / pause → pause it)
-  // and reports whether Spotify is the active source.
-  app.get<{ Querystring: { overlay?: string } }>(
-    "/public/song-queue/state",
-    async (request) => {
-      const state =
-        await twitchRuntimeContainer.songQueueService.getOverlayState();
-
-      if (request.query.overlay === "1") {
-        void twitchRuntimeContainer.spotifyService.syncFromOverlay({
-          hasCurrentYouTube: state.current !== null,
-          paused: state.paused,
-        });
-      }
-
-      return {
-        ok: true,
-        data: {
-          ...state,
-          spotifyActive: twitchRuntimeContainer.spotifyService.isFallbackActive(),
-        },
-      };
-    },
-  );
+  // Overlay state: current track (promotes next if idle) + pause & skip-vote +
+  // the YouTube-mix fallback config the overlay uses when the queue is empty.
+  app.get("/public/song-queue/state", async () => {
+    return {
+      ok: true,
+      data: await twitchRuntimeContainer.songQueueService.getOverlayState(),
+    };
+  });
 
   // Current track finished → mark it played and promote the next one.
   app.post("/public/song-queue/advance", async () => {
@@ -2164,6 +2101,23 @@ app.post<{
       ok: true,
       data: await twitchRuntimeContainer.songQueueService.getHistory(),
     };
+  });
+
+  // Overlay reports the track it's currently playing from the mix fallback.
+  app.post<{
+    Body: { videoId?: string; title?: string | null; author?: string | null };
+  }>("/public/song-queue/fallback-state", async (request) => {
+    const body = request.body ?? {};
+    twitchRuntimeContainer.songQueueService.setFallbackNow(
+      body.videoId
+        ? {
+            videoId: body.videoId,
+            title: body.title ?? null,
+            author: body.author ?? null,
+          }
+        : null,
+    );
+    return { ok: true };
   });
 
   // Donatello «Колбеки» webhook: Donatello POSTs each donation here with the
@@ -2195,46 +2149,6 @@ app.post<{
     },
   );
 
-}
-
-/** Popup page shown after Spotify OAuth: notifies the admin window and closes. */
-function buildSpotifyPopupHtml(payload: {
-  ok: boolean;
-  name?: string | null;
-  error?: string;
-}): string {
-  const serialized = JSON.stringify({ source: "spotify-auth", ...payload });
-  const origin = JSON.stringify(env.ADMIN_BASE_URL);
-  const title = payload.ok ? "Spotify підключено" : "Помилка Spotify";
-
-  return `<!doctype html>
-<html lang="uk">
-  <head>
-    <meta charset="utf-8" />
-    <title>${title}</title>
-    <style>
-      body { font-family: Arial, sans-serif; background:#0f1115; color:#f3f4f6;
-        display:grid; place-items:center; min-height:100vh; margin:0; }
-      .box { padding:24px; border-radius:14px; background:#181c23;
-        border:1px solid #2b3240; max-width:420px; text-align:center; }
-      .muted { color:#9ca3af; margin-top:8px; }
-    </style>
-  </head>
-  <body>
-    <div class="box">
-      <h2>${title}</h2>
-      <p class="muted">Це вікно закриється автоматично.</p>
-    </div>
-    <script>
-      (function () {
-        if (window.opener && !window.opener.closed) {
-          window.opener.postMessage(${serialized}, ${origin});
-        }
-        setTimeout(function () { window.close(); }, 200);
-      })();
-    </script>
-  </body>
-</html>`;
 }
 
 /** Constant-time string comparison that tolerates differing lengths. */
