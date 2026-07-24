@@ -53,7 +53,10 @@ export class SongQueueService {
   private settingsCache: { value: SongRequestSettingsDto; at: number } | null =
     null;
   // Playback controls (in-memory; the overlay reads them via getOverlayState).
-  private paused = false;
+  // Starts paused so that after a server restart nothing auto-blasts audio —
+  // the streamer resumes explicitly (chat !пауза or the admin button). Normal
+  // track changes clear it in resetControls(), so only the restart is paused.
+  private paused = true;
   private skipVoters = new Set<string>();
   private votedSongId: string | null = null;
 

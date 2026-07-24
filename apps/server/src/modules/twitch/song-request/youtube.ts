@@ -55,6 +55,39 @@ export function canonicalYouTubeUrl(videoId: string): string {
   return `https://www.youtube.com/watch?v=${videoId}`;
 }
 
+const YT_HOST_RE = /^(?:(?:www|m|music)\.)?(?:youtube\.com|youtu\.be)\//i;
+
+/**
+ * Find the first real YouTube link inside a free-form message (e.g. a donation
+ * comment). Requires an actual URL/host — bare 11-char words are NOT accepted
+ * (they'd false-positive on ordinary text). Returns null when there is none.
+ */
+export function extractFirstYouTubeUrl(text: string): string | null {
+  if (!text) {
+    return null;
+  }
+
+  for (const rawToken of text.split(/\s+/)) {
+    // Strip trailing punctuation a donor might glue onto the link.
+    const token = rawToken.replace(/[)\]}>,.;!?'"]+$/g, "").trim();
+    if (!token) {
+      continue;
+    }
+
+    const withScheme = /^https?:\/\//i.test(token)
+      ? token
+      : YT_HOST_RE.test(token)
+        ? `https://${token}`
+        : null;
+
+    if (withScheme && parseYouTubeVideoId(withScheme)) {
+      return withScheme;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Best-effort keyless duration (in seconds): scrapes "lengthSeconds" from the
  * watch page. Returns null when it can't be determined (never throws) — callers

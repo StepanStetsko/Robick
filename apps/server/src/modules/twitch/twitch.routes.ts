@@ -26,6 +26,11 @@ import type {
 import type { UpdateGiveawaySettingsInput } from "./giveaway/giveaway.types.js";
 import type { UpdateGuessGameSettingsInput } from "./guess/guess.types.js";
 import type { UpdateSongRequestSettingsInput } from "./song-request/song-request.types.js";
+import type {
+  DonatelloCallbackBody,
+  UpdateDonatelloSettingsInput,
+} from "./donatello/donatello.types.js";
+import type { UpdateSpotifySettingsInput } from "./spotify/spotify.types.js";
 import type { UpdateSupporterSettingsInput } from "./supporter/supporter.types.js";
 import type { SimulateChatInput } from "./simulation/ChatSimulationService.js";
 import { AccountType } from "../../generated/prisma/client.js";
@@ -1981,6 +1986,126 @@ app.post<{
     };
   });
 
+  // ===== Donatello (donations → priority songs) =====
+
+  app.get("/twitch/donatello/settings", async () => {
+    return {
+      ok: true,
+      data: await twitchRuntimeContainer.donatelloService.getSettings(),
+    };
+  });
+
+  app.patch<{
+    Body: UpdateDonatelloSettingsInput;
+  }>("/twitch/donatello/settings", async (request, reply) => {
+    try {
+      const settings = await twitchRuntimeContainer.donatelloService.updateSettings(
+        request.body,
+      );
+
+      twitchEventLog.add({
+        source: "admin",
+        type: "donatello.settings_updated",
+        message: "Donatello settings updated from admin panel",
+      });
+
+      return { ok: true, data: settings };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to update donatello settings";
+
+      reply.code(400);
+      return { ok: false, message };
+    }
+  });
+
+  // Recent donations (dedup log / admin history).
+  app.get("/twitch/donatello/donations", async () => {
+    return {
+      ok: true,
+      data: await twitchRuntimeContainer.donatelloService.listDonations(),
+    };
+  });
+
+  // ===== Spotify Connect (fallback music) =====
+
+  app.get("/twitch/spotify/settings", async () => {
+    return {
+      ok: true,
+      data: await twitchRuntimeContainer.spotifyService.getSettings(),
+    };
+  });
+
+  app.patch<{
+    Body: UpdateSpotifySettingsInput;
+  }>("/twitch/spotify/settings", async (request, reply) => {
+    try {
+      const settings = await twitchRuntimeContainer.spotifyService.updateSettings(
+        request.body,
+      );
+      return { ok: true, data: settings };
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to update spotify settings";
+      reply.code(400);
+      return { ok: false, message };
+    }
+  });
+
+  app.get("/twitch/spotify/devices", async () => {
+    return {
+      ok: true,
+      data: await twitchRuntimeContainer.spotifyService.getDevices(),
+    };
+  });
+
+  app.post("/twitch/spotify/disconnect", async () => {
+    await twitchRuntimeContainer.spotifyService.disconnect();
+    return {
+      ok: true,
+      data: await twitchRuntimeContainer.spotifyService.getSettings(),
+    };
+  });
+
+  // OAuth: popup → Spotify authorize → callback stores tokens. Public (no cookie).
+  app.get("/auth/spotify/login", async (_request, reply) => {
+    try {
+      const { url } = twitchRuntimeContainer.spotifyService.buildAuthUrl();
+      return reply.redirect(url);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Spotify not configured";
+      reply.code(400);
+      return { ok: false, message };
+    }
+  });
+
+  app.get<{
+    Querystring: { code?: string; state?: string; error?: string };
+  }>("/auth/spotify/callback", async (request, reply) => {
+    try {
+      if (request.query.error) {
+        return reply
+          .type("text/html")
+          .send(buildSpotifyPopupHtml({ ok: false, error: request.query.error }));
+      }
+
+      const name = await twitchRuntimeContainer.spotifyService.handleCallback(
+        request.query.code,
+        request.query.state,
+      );
+      return reply
+        .type("text/html")
+        .send(buildSpotifyPopupHtml({ ok: true, name }));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Spotify authorization failed";
+      return reply
+        .type("text/html")
+        .send(buildSpotifyPopupHtml({ ok: false, error: message }));
+    }
+  });
+
   // ===== Public overlay endpoints (no auth — OBS browser source) =====
 
   app.get("/public/song-queue", async () => {
@@ -1999,12 +2124,31 @@ app.post<{
   });
 
   // Overlay state: current track (promotes next if idle) + pause & skip-vote.
-  app.get("/public/song-queue/state", async () => {
-    return {
-      ok: true,
-      data: await twitchRuntimeContainer.songQueueService.getOverlayState(),
-    };
-  });
+  // The OBS overlay calls this with ?overlay=1, which also drives the Spotify
+  // fallback (queue idle & not paused → play Spotify; a song / pause → pause it)
+  // and reports whether Spotify is the active source.
+  app.get<{ Querystring: { overlay?: string } }>(
+    "/public/song-queue/state",
+    async (request) => {
+      const state =
+        await twitchRuntimeContainer.songQueueService.getOverlayState();
+
+      if (request.query.overlay === "1") {
+        void twitchRuntimeContainer.spotifyService.syncFromOverlay({
+          hasCurrentYouTube: state.current !== null,
+          paused: state.paused,
+        });
+      }
+
+      return {
+        ok: true,
+        data: {
+          ...state,
+          spotifyActive: twitchRuntimeContainer.spotifyService.isFallbackActive(),
+        },
+      };
+    },
+  );
 
   // Current track finished → mark it played and promote the next one.
   app.post("/public/song-queue/advance", async () => {
@@ -2022,6 +2166,85 @@ app.post<{
     };
   });
 
+  // Donatello «Колбеки» webhook: Donatello POSTs each donation here with the
+  // shared secret in the X-Key header. We verify the key (constant-time), then
+  // hand the body to the service (dedupe, threshold, YouTube link → queue).
+  app.post<{ Body: DonatelloCallbackBody }>(
+    "/public/donatello/callback",
+    async (request, reply) => {
+      const expected = env.DONATELLO_WEBHOOK_KEY;
+      if (!expected) {
+        // Integration not configured — no key to check against.
+        reply.code(503);
+        return { ok: false, message: "Donatello webhook not configured" };
+      }
+
+      const provided = request.headers["x-key"];
+      if (typeof provided !== "string" || !timingSafeEqualStr(provided, expected)) {
+        reply.code(401);
+        return { ok: false, message: "Invalid key" };
+      }
+
+      const result = await twitchRuntimeContainer.donatelloService.handleCallback(
+        request.body ?? {},
+      );
+
+      // Always 200 so Donatello does not retry a callback we intentionally
+      // ignored (below threshold, no link, duplicate, etc.).
+      return { ok: true, status: result.status };
+    },
+  );
+
+}
+
+/** Popup page shown after Spotify OAuth: notifies the admin window and closes. */
+function buildSpotifyPopupHtml(payload: {
+  ok: boolean;
+  name?: string | null;
+  error?: string;
+}): string {
+  const serialized = JSON.stringify({ source: "spotify-auth", ...payload });
+  const origin = JSON.stringify(env.ADMIN_BASE_URL);
+  const title = payload.ok ? "Spotify підключено" : "Помилка Spotify";
+
+  return `<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="utf-8" />
+    <title>${title}</title>
+    <style>
+      body { font-family: Arial, sans-serif; background:#0f1115; color:#f3f4f6;
+        display:grid; place-items:center; min-height:100vh; margin:0; }
+      .box { padding:24px; border-radius:14px; background:#181c23;
+        border:1px solid #2b3240; max-width:420px; text-align:center; }
+      .muted { color:#9ca3af; margin-top:8px; }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <h2>${title}</h2>
+      <p class="muted">Це вікно закриється автоматично.</p>
+    </div>
+    <script>
+      (function () {
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage(${serialized}, ${origin});
+        }
+        setTimeout(function () { window.close(); }, 200);
+      })();
+    </script>
+  </body>
+</html>`;
+}
+
+/** Constant-time string comparison that tolerates differing lengths. */
+function timingSafeEqualStr(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(bufA, bufB);
 }
 
 

@@ -27,6 +27,7 @@ type OverlayState = {
   paused: boolean;
   skipVotes: number;
   skipVotesNeeded: number;
+  spotifyActive?: boolean;
 };
 
 // Minimal shape of the YouTube IFrame Player we use.
@@ -46,14 +47,16 @@ declare global {
         el: HTMLElement | string,
         options: Record<string, unknown>,
       ) => YTPlayer;
-      PlayerState: { ENDED: number };
+      PlayerState: { ENDED: number; PLAYING: number };
     };
     onYouTubeIframeAPIReady?: () => void;
   }
 }
 
 async function fetchState(): Promise<OverlayState | null> {
-  const res = await fetch(`${API_BASE}/api/public/song-queue/state`);
+  // ?overlay=1 marks this as the real OBS source, which drives the Spotify
+  // fallback server-side (and gates it on the overlay being alive).
+  const res = await fetch(`${API_BASE}/api/public/song-queue/state?overlay=1`);
   const json = (await res.json()) as { ok: boolean; data: OverlayState | null };
   return json.data ?? null;
 }
@@ -73,10 +76,14 @@ export function OverlayPlayerPage() {
   const playerRef = useRef<YTPlayer | null>(null);
   const loadedVideoId = useRef<string | null>(null);
   const appliedPaused = useRef(false);
+  // Desired pause state, mirrored into a ref so the YT state-change callback can
+  // re-assert it (autoplay after loadVideoById races an immediate pauseVideo).
+  const pausedRef = useRef(true);
   const [nowPlaying, setNowPlaying] = useState<SongDto | null>(null);
   const [paused, setPaused] = useState(false);
   const [skipVotes, setSkipVotes] = useState(0);
   const [skipNeeded, setSkipNeeded] = useState(0);
+  const [spotifyActive, setSpotifyActive] = useState(false);
   const [progress, setProgress] = useState(0);
   const nowPlayingRef = useRef<SongDto | null>(null);
 
@@ -121,6 +128,7 @@ export function OverlayPlayerPage() {
 
     function applyPause(next: boolean) {
       setPaused(next);
+      pausedRef.current = next;
       const player = playerRef.current;
       if (!player || next === appliedPaused.current) {
         return;
@@ -147,6 +155,7 @@ export function OverlayPlayerPage() {
         applyPause(state.paused);
         setSkipVotes(state.skipVotes);
         setSkipNeeded(state.skipVotesNeeded);
+        setSpotifyActive(Boolean(state.spotifyActive));
       } catch {
         // ignore — retried on the next tick
       }
@@ -199,6 +208,20 @@ export function OverlayPlayerPage() {
           onStateChange: (event: { data: number }) => {
             if (event.data === window.YT?.PlayerState.ENDED) {
               void onEnded();
+              return;
+            }
+            // A freshly loaded video autoplays; if we're meant to be paused
+            // (e.g. right after a server restart), pause it as soon as it starts.
+            if (
+              event.data === window.YT?.PlayerState.PLAYING &&
+              pausedRef.current
+            ) {
+              appliedPaused.current = true;
+              try {
+                playerRef.current?.pauseVideo();
+              } catch {
+                // player not ready — the state poll will retry
+              }
             }
           },
           onError: (event: { data: number }) => {
@@ -271,6 +294,8 @@ export function OverlayPlayerPage() {
         progress={progress}
         idle={!nowPlaying}
         paused={paused}
+        animateHide
+        spotifyFallback={!nowPlaying && spotifyActive}
         skipVotes={skipVotes}
         skipNeeded={skipNeeded}
       />

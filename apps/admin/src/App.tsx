@@ -16,6 +16,8 @@ import { BuffsPage } from "./pages/BuffsPage";
 import { GiveawayPage } from "./pages/GiveawayPage";
 import { GuessPage } from "./pages/GuessPage";
 import { SongRequestPage } from "./pages/SongRequestPage";
+import { DonatelloPage } from "./pages/DonatelloPage";
+import { SpotifyPage } from "./pages/SpotifyPage";
 import { SupporterPage } from "./pages/SupporterPage";
 import { PresencePage } from "./pages/PresencePage";
 import { SimulationPage } from "./pages/SimulationPage";
@@ -46,6 +48,8 @@ export default function App() {
         <Route path="giveaway" element={<GiveawayPage />} />
         <Route path="guess" element={<GuessPage />} />
         <Route path="song-request" element={<SongRequestPage />} />
+        <Route path="donatello" element={<DonatelloPage />} />
+        <Route path="spotify" element={<SpotifyPage />} />
         <Route path="supporter" element={<SupporterPage />} />
         <Route path="presence" element={<PresencePage />} />
         <Route path="simulation" element={<SimulationPage />} />

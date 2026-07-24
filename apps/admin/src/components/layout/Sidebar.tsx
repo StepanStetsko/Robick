@@ -21,6 +21,8 @@ const navSections: NavSection[] = [
       { to: "/guess", label: "Вгадай число", ico: "?" },
       { to: "/giveaway", label: "Розіграш", ico: "🎁" },
       { to: "/song-request", label: "Пісні", ico: "♪" },
+      { to: "/spotify", label: "Spotify", ico: "▶" },
+      { to: "/donatello", label: "Донати", ico: "❤" },
       { to: "/supporter", label: "Перки", ico: "♛" },
     ],
   },

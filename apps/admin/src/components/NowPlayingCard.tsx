@@ -14,12 +14,21 @@ type NowPlayingCardProps = {
   idle?: boolean;
   /** Playback is paused — freeze the equalizer and show a pause label. */
   paused?: boolean;
+  /**
+   * When true, pausing fades the whole card out (and resuming fades it back in)
+   * instead of just showing a pause label. Used by the OBS overlay so the scene
+   * is clean while paused; the admin preview leaves it false.
+   */
+  animateHide?: boolean;
+  /** Idle but Spotify fallback is playing — show a Spotify label instead. */
+  spotifyFallback?: boolean;
   /** Current skip-vote tally (shows a chip when > 0). */
   skipVotes?: number;
   skipNeeded?: number;
 };
 
 const ACCENT = "#22c55e";
+const SPOTIFY_COLOR = "#1db954";
 const PAUSE_COLOR = "#f59e0b";
 const CARD_WIDTH = 420;
 
@@ -30,11 +39,17 @@ export function NowPlayingCard({
   progress = 0,
   idle = false,
   paused = false,
+  animateHide = false,
+  spotifyFallback = false,
   skipVotes = 0,
   skipNeeded = 0,
 }: NowPlayingCardProps) {
   const pct = Math.max(0, Math.min(1, progress)) * 100;
   const showVotes = !idle && skipVotes > 0 && skipNeeded > 0;
+  // Overlay-only: while paused the card gently fades/slides away, and slides
+  // back in on resume. Everything else keeps rendering so the transition is
+  // smooth (no unmount) — we only animate opacity + transform.
+  const hidden = animateHide && paused;
 
   return (
     <div
@@ -50,6 +65,13 @@ export function NowPlayingCard({
         backdropFilter: "blur(10px)",
         fontFamily: "Inter, system-ui, sans-serif",
         color: "#f5f7fa",
+        opacity: hidden ? 0 : 1,
+        transform: hidden
+          ? "translateY(14px) scale(0.96)"
+          : "translateY(0) scale(1)",
+        transition: "opacity 0.55s ease, transform 0.55s ease",
+        pointerEvents: hidden ? "none" : "auto",
+        willChange: "opacity, transform",
       }}
     >
       <style>{keyframes}</style>
@@ -97,7 +119,14 @@ export function NowPlayingCard({
             }}
           >
             {idle ? (
-              <span style={labelStyle("#6b7280")}>Черга порожня</span>
+              spotifyFallback ? (
+                <>
+                  <Equalizer color={SPOTIFY_COLOR} />
+                  <span style={labelStyle(SPOTIFY_COLOR)}>♫ Spotify</span>
+                </>
+              ) : (
+                <span style={labelStyle("#6b7280")}>Черга порожня</span>
+              )
             ) : paused ? (
               <span style={labelStyle(PAUSE_COLOR)}>⏸ Пауза</span>
             ) : (
@@ -135,7 +164,11 @@ export function NowPlayingCard({
               textOverflow: "ellipsis",
             }}
           >
-            {idle ? "Замов пісню — !пісня <youtube>" : title || "Без назви"}
+            {idle
+              ? spotifyFallback
+                ? "Spotify — фонова музика"
+                : "Замов пісню — !пісня <youtube>"
+              : title || "Без назви"}
           </div>
 
           {!idle && requestedBy ? (
@@ -179,7 +212,7 @@ function labelStyle(color: string): CSSProperties {
   };
 }
 
-function Equalizer() {
+function Equalizer({ color = ACCENT }: { color?: string }) {
   return (
     <span
       style={{
@@ -196,7 +229,7 @@ function Equalizer() {
           style={{
             width: 3,
             height: "100%",
-            background: ACCENT,
+            background: color,
             borderRadius: 1,
             transformOrigin: "bottom",
             animation: `nowplaying-eq 0.9s ${i * 0.15}s ease-in-out infinite`,

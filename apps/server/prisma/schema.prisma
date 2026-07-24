@@ -394,6 +394,61 @@ model SupporterStatus {
   @@index([manualTier])
 }
 
+// Donatello donation integration. A donor's message can carry a YouTube link;
+// when the donation is >= songMinAmount (in `currency`) the bot pulls the link
+// and enqueues it as a `donation` source with `songPriority` (queue-jump). All
+// numbers/messages are editable here per the configurable-everything principle;
+// the webhook shared secret (X-Key) lives in .env as DONATELLO_WEBHOOK_KEY.
+model DonatelloSettings {
+  id             String   @id @default(cuid())
+  key            String   @unique @default("donatello")
+  enabled        Boolean  @default(false)
+  songMinAmount  Int      @default(50)
+  songPriority   Int      @default(5)
+  currency       String   @default("UAH") // лише донати в цій валюті рахуються до порогу; порожньо = будь-яка
+  thankYouInChat Boolean  @default(true)
+  messages       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// Processed Donatello callbacks — deduped by the donation's pubId (webhooks may
+// retry) plus a short history for the admin panel. songRequestId links to the
+// queued track when a song was added; outcome records why nothing was queued.
+model DonatelloDonation {
+  id            String   @id @default(cuid())
+  pubId         String   @unique
+  clientName    String?
+  amount        Float?
+  currency      String?
+  message       String?
+  songRequestId String?
+  songTitle     String?
+  outcome       String   @default("received") // received | queued | belowMin | noLink | rejected
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// Spotify Connect fallback: when the YouTube song queue is idle (and not
+// paused), the bot tells the streamer's Spotify desktop app to play a fallback
+// playlist; a requested song / pause stops it. Config lives here; the OAuth app
+// client id/secret + redirect are in .env. Tokens are stored here (single row).
+model SpotifySettings {
+  id                 String    @id @default(cuid())
+  key                String    @unique @default("spotify")
+  enabled            Boolean   @default(false)
+  fallbackContextUri String    @default("") // spotify:playlist:... | album | artist
+  deviceId           String    @default("") // target device; empty = active device
+  deviceName         String    @default("")
+  accessToken        String?
+  refreshToken       String?
+  tokenExpiresAt     DateTime?
+  connectedName      String? // Spotify display name once authorized
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+}
+
 enum AccountType {
   broadcaster
   bot

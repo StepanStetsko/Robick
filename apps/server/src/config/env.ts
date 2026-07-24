@@ -37,6 +37,17 @@ const envSchema = z.object({
   // Admin session lifetime in hours (default: 7 days).
   ADMIN_SESSION_TTL_HOURS: z.coerce.number().int().positive().default(168),
 
+  // Donatello «Колбеки» shared secret (X-Key header). Empty = webhook disabled.
+  DONATELLO_WEBHOOK_KEY: z.string().default(""),
+
+  // --- Spotify Connect fallback (OAuth app credentials) ---
+  // From developer.spotify.com dashboard. Empty = Spotify integration disabled.
+  SPOTIFY_CLIENT_ID: z.string().default(""),
+  SPOTIFY_CLIENT_SECRET: z.string().default(""),
+  // Must match a Redirect URI registered in the Spotify app. Empty = derived
+  // from ADMIN_BASE_URL + /api/auth/spotify/callback.
+  SPOTIFY_REDIRECT_URI: z.string().default(""),
+
   STORAGE_DIR: z.string().default("./storage"),
 
   UNREAL_WS_PORT: z.coerce.number().int().positive().default(4101),
