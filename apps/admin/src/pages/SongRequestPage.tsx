@@ -388,7 +388,7 @@ export function SongRequestPage() {
                 className="button button--ghost"
                 type="button"
                 onClick={() => void runQueueAction(togglePauseSong)}
-                disabled={busy || (!state.current && !state.fallbackNow)}
+                disabled={busy}
                 title="Пауза/відновлення — працює і для замовленої пісні, і для радіо-фону"
               >
                 {state.paused ? "▶ Відновити" : "⏸ Пауза"}
@@ -732,6 +732,19 @@ export function SongRequestPage() {
                   <h3 className="command-ref__group-title">
                     Зараз у фоні
                   </h3>
+
+                  <div className="actions" style={{ marginBottom: 12 }}>
+                    <button
+                      className="button button--ghost"
+                      type="button"
+                      onClick={() => void runQueueAction(togglePauseSong)}
+                      disabled={busy}
+                      title="Пауза/відновлення радіо-фону (глобальна пауза плеєра)"
+                    >
+                      {state.paused ? "▶ Відновити" : "⏸ Пауза"}
+                    </button>
+                  </div>
+
                   {state.fallbackNow ? (
                     <div className="state-block">
                       <strong>
