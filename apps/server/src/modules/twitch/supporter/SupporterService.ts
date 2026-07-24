@@ -380,6 +380,34 @@ export class SupporterService {
   async removeManualSupporter(login: string): Promise<void> {
     await this.repo.removeManualSupporter(login);
   }
+
+  // ----- Paid subscription → supporter (Donatello / mono) -----
+
+  /** Grant/refresh a paid supporter subscription by Twitch login. */
+  async grantMonoSupporter(input: {
+    login: string;
+    monoSubId: string;
+    until: Date;
+    displayName?: string | null;
+  }): Promise<void> {
+    if (!input.login) {
+      return;
+    }
+    await this.repo.setMonoSubscription({
+      userLogin: input.login,
+      monoSubId: input.monoSubId,
+      monoUntil: input.until,
+      displayName: input.displayName ?? null,
+    });
+  }
+
+  /** Revoke a paid supporter subscription by Twitch login. */
+  async revokeMonoSupporter(login: string): Promise<void> {
+    if (!login) {
+      return;
+    }
+    await this.repo.clearMonoSubscription(login);
+  }
 }
 
 /** Local-day key (YYYY-MM-DD), matching PresenceLogService's day scoping. */

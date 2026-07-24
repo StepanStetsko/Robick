@@ -2,6 +2,7 @@ import { env } from "../../../config/env.js";
 import { logger } from "../../../core/logger/logger.js";
 import type { TwitchChatService } from "../TwitchChatService.js";
 import type { SongQueueService } from "../song-request/SongQueueService.js";
+import type { SupporterService } from "../supporter/SupporterService.js";
 import { extractFirstYouTubeUrl } from "../song-request/youtube.js";
 import { DonatelloRepository } from "./DonatelloRepository.js";
 import {
@@ -19,6 +20,9 @@ import type {
 } from "../../../generated/prisma/client.js";
 
 const DONATELLO_API_BASE = "https://donatello.to/api/v1";
+// Supporter grant window per sync — long enough to survive brief downtime, and
+// refreshed every sync (~10 min) while the subscription stays active.
+const SUPPORTER_GRANT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const SETTINGS_TTL_MS = 30_000;
 
@@ -42,6 +46,7 @@ export class DonatelloService {
     private readonly repo: DonatelloRepository,
     private readonly songQueueService: SongQueueService,
     private readonly chatService: TwitchChatService,
+    private readonly supporterService: SupporterService,
   ) {}
 
   async getSettings(): Promise<DonatelloSettingsDto> {
@@ -135,6 +140,17 @@ export class DonatelloService {
           }
           seen.push(sub.pubClientId);
           await this.repo.upsertSubscriber(sub);
+
+          // Auto-grant the supporter tier by Twitch login (rolling window,
+          // refreshed each sync; revoked below when a sub lapses).
+          if (sub.twitchName) {
+            await this.supporterService.grantMonoSupporter({
+              login: sub.twitchName,
+              monoSubId: sub.pubClientId,
+              until: new Date(Date.now() + SUPPORTER_GRANT_WINDOW_MS),
+              displayName: sub.clientName,
+            });
+          }
         }
 
         const pages = typeof data.pages === "number" ? data.pages : page + 1;
@@ -144,6 +160,13 @@ export class DonatelloService {
         page += 1;
       }
 
+      // Revoke supporter for subs that dropped out of the active list.
+      const lapsed = await this.repo.listLapsed(seen);
+      for (const row of lapsed) {
+        if (row.twitchName) {
+          await this.supporterService.revokeMonoSupporter(row.twitchName);
+        }
+      }
       await this.repo.deactivateMissing(seen);
       return { ok: true, count: seen.length };
     } catch (error: unknown) {

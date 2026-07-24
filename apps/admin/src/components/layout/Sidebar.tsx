@@ -22,6 +22,7 @@ const navSections: NavSection[] = [
       { to: "/giveaway", label: "Розіграш", ico: "🎁" },
       { to: "/song-request", label: "Пісні", ico: "♪" },
       { to: "/donatello", label: "Донати", ico: "❤" },
+      { to: "/poll", label: "Голосування", ico: "☑" },
       { to: "/supporter", label: "Перки", ico: "♛" },
     ],
   },

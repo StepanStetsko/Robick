@@ -172,6 +172,43 @@ export class SupporterRepository {
     });
   }
 
+  // ----- Paid subscription → supporter (mono / Donatello) -----
+
+  /** Grant/refresh a paid supporter subscription (sets monoSubId + monoUntil). */
+  async setMonoSubscription(input: {
+    userLogin: string;
+    monoSubId: string;
+    monoUntil: Date;
+    twitchUserId?: string | null;
+    displayName?: string | null;
+  }): Promise<void> {
+    const key = input.userLogin.toLocaleLowerCase();
+    await this.db.supporterStatus.upsert({
+      where: { userLogin: key },
+      create: {
+        userLogin: key,
+        twitchUserId: input.twitchUserId ?? null,
+        displayName: input.displayName ?? null,
+        monoSubId: input.monoSubId,
+        monoUntil: input.monoUntil,
+      },
+      update: {
+        monoSubId: input.monoSubId,
+        monoUntil: input.monoUntil,
+        ...(input.twitchUserId ? { twitchUserId: input.twitchUserId } : {}),
+        ...(input.displayName ? { displayName: input.displayName } : {}),
+      },
+    });
+  }
+
+  /** Revoke a paid subscription (clears mono fields; keeps streak/manual). */
+  async clearMonoSubscription(login: string): Promise<void> {
+    await this.db.supporterStatus.updateMany({
+      where: { userLogin: login.toLocaleLowerCase() },
+      data: { monoSubId: null, monoUntil: null },
+    });
+  }
+
   // ----- Presence streak (drives the free `loyal` tier) -----
 
   /** Ordered list of stream-days seen so far (oldest → newest). */

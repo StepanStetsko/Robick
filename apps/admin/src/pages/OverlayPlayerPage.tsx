@@ -52,6 +52,7 @@ type YTPlayer = {
   getCurrentTime: () => number;
   getDuration: () => number;
   getVideoData: () => VideoData;
+  getPlaylistIndex: () => number;
   destroy: () => void;
 };
 
@@ -114,6 +115,9 @@ export function OverlayPlayerPage() {
   const playerRef = useRef<YTPlayer | null>(null);
   const loadedVideoId = useRef<string | null>(null);
   const loadedMixListId = useRef<string | null>(null);
+  // Where we were in the mix, so re-entering the fallback resumes there instead
+  // of restarting from the first track every time a request interrupts it.
+  const mixIndexRef = useRef(0);
   const appliedPaused = useRef(false);
   const pausedRef = useRef(true);
   const modeRef = useRef<"queue" | "fallback" | "idle">("idle");
@@ -183,10 +187,11 @@ export function OverlayPlayerPage() {
         loadedMixListId.current = mixListId;
         appliedPaused.current = false;
         setProgress(0);
+        // Resume near where the mix left off (not always the first track).
         playerRef.current?.loadPlaylist({
           list: mixListId,
           listType: "playlist",
-          index: 0,
+          index: Math.max(0, mixIndexRef.current),
         });
       }
     }
@@ -245,6 +250,15 @@ export function OverlayPlayerPage() {
         }
         return;
       }
+      // Remember our spot in the mix so a later re-entry resumes here.
+      try {
+        const idx = player.getPlaylistIndex();
+        if (typeof idx === "number" && idx >= 0) {
+          mixIndexRef.current = idx;
+        }
+      } catch {
+        // ignore
+      }
       setDisplay({
         title: data.title ?? null,
         thumbnailUrl: `https://i.ytimg.com/vi/${data.video_id}/hqdefault.jpg`,
@@ -270,14 +284,14 @@ export function OverlayPlayerPage() {
 
         if (state.current) {
           playQueueSong(state.current);
-        } else if (
-          state.fallback.enabled &&
-          state.fallback.mixListId &&
-          !state.paused
-        ) {
+        } else if (state.fallback.enabled && state.fallback.mixListId) {
+          // Stay in fallback mode even while paused (applyPause holds the
+          // player); only skip/report when actually playing.
           startFallback(state.fallback.mixListId);
-          // Re-check the current mix track against a possibly-updated blocklist.
-          handleFallbackTrack();
+          if (!state.paused) {
+            // Re-check the current mix track against an updated blocklist.
+            handleFallbackTrack();
+          }
         } else {
           goIdle();
         }

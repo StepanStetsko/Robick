@@ -388,7 +388,8 @@ export function SongRequestPage() {
                 className="button button--ghost"
                 type="button"
                 onClick={() => void runQueueAction(togglePauseSong)}
-                disabled={busy || !state.current}
+                disabled={busy || (!state.current && !state.fallbackNow)}
+                title="Пауза/відновлення — працює і для замовленої пісні, і для радіо-фону"
               >
                 {state.paused ? "▶ Відновити" : "⏸ Пауза"}
               </button>

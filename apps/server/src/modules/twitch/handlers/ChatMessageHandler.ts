@@ -25,6 +25,7 @@ import { EarningExclusionService } from "../economy/EarningExclusionService.js";
 import { TwitchRuntimeState } from "../runtime/TwitchRuntimeState.js";
 import { SupporterService } from "../supporter/SupporterService.js";
 import { SupporterBonusCommandRouter } from "../supporter/SupporterBonusCommandRouter.js";
+import { PollService } from "../poll/PollService.js";
 
 export class ChatMessageHandler {
   private readonly rateLimitService = new RateLimitService();
@@ -54,6 +55,7 @@ export class ChatMessageHandler {
     private readonly songRequestCommandRouter: SongRequestCommandRouter,
     private readonly supporterService: SupporterService,
     private readonly supporterBonusCommandRouter: SupporterBonusCommandRouter,
+    private readonly pollService: PollService,
   ) {
     this.commandRouter = new ChatCommandRouter(
       chatService,
@@ -123,6 +125,12 @@ export class ChatMessageHandler {
 
     await this.awardChatActivity(event);
     await this.maybeGreet(event);
+
+    // A poll vote (bare number or exact option text) consumes the message so it
+    // doesn't fall through to other handlers. Non-matching messages continue.
+    if (this.pollService.tryVote(event.chatter_user_id, event.message.text)) {
+      return;
+    }
 
     const funMeterHandled = await this.funMeterCommandRouter.handle(event);
 

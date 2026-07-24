@@ -34,6 +34,8 @@ const PUBLIC_PATHS = new Set<string>([
   "/api/public/donatello/callback",
   // Overlay reports its current fallback (radio) track — no admin cookie.
   "/api/public/song-queue/fallback-state",
+  // Poll overlay (OBS browser source has no admin cookie).
+  "/api/public/poll",
 ]);
 
 function isPublic(request: FastifyRequest) {

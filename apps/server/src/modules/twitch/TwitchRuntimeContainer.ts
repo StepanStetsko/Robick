@@ -30,6 +30,7 @@ import { DonatelloService } from "./donatello/DonatelloService.js";
 import { SupporterRepository } from "./supporter/SupporterRepository.js";
 import { SupporterService } from "./supporter/SupporterService.js";
 import { SupporterBonusCommandRouter } from "./supporter/SupporterBonusCommandRouter.js";
+import { PollService } from "./poll/PollService.js";
 import { ProtectionRepository } from "./steal/ProtectionRepository.js";
 import { StealService } from "./steal/StealService.js";
 import { StealCommandRouter } from "./steal/StealCommandRouter.js";
@@ -264,6 +265,7 @@ const donatelloService = new DonatelloService(
   donatelloRepository,
   songQueueService,
   twitchChatService,
+  supporterService,
 );
 
 // Periodically pull Donatello subscription supporters (if the API token is set).
@@ -305,6 +307,8 @@ const supporterBonusCommandRouter = new SupporterBonusCommandRouter(
   economyService,
 );
 
+const pollService = new PollService();
+
 const chatMessageHandler = new ChatMessageHandler(
   twitchChatService,
   customChatCommandService,
@@ -329,6 +333,7 @@ const chatMessageHandler = new ChatMessageHandler(
   songRequestCommandRouter,
   supporterService,
   supporterBonusCommandRouter,
+  pollService,
 );
 
 const chatSimulationService = new ChatSimulationService(
@@ -446,6 +451,7 @@ export const twitchRuntimeContainer = {
   supporterRepository,
   supporterService,
   supporterBonusCommandRouter,
+  pollService,
   chatMessageHandler,
   chatSimulationService,
   rewardActionPayloadBuilder,

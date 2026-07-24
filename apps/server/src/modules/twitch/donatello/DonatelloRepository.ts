@@ -117,6 +117,15 @@ export class DonatelloRepository {
     });
   }
 
+  /** Currently-active DB rows that were NOT in the latest sync (lapsed subs). */
+  async listLapsed(
+    activePubClientIds: string[],
+  ): Promise<DonatelloSubscriber[]> {
+    return this.db.donatelloSubscriber.findMany({
+      where: { pubClientId: { notIn: activePubClientIds }, isActive: true },
+    });
+  }
+
   /** Mark subscribers not seen in the latest active sync as inactive. */
   async deactivateMissing(activePubClientIds: string[]): Promise<void> {
     await this.db.donatelloSubscriber.updateMany({

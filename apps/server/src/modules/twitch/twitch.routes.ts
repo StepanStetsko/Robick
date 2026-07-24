@@ -31,6 +31,7 @@ import type {
   UpdateDonatelloSettingsInput,
 } from "./donatello/donatello.types.js";
 import type { UpdateSupporterSettingsInput } from "./supporter/supporter.types.js";
+import type { StartPollInput } from "./poll/PollService.js";
 import type { SimulateChatInput } from "./simulation/ChatSimulationService.js";
 import { AccountType } from "../../generated/prisma/client.js";
 import { twitchRealtimeHub } from "./realtime/twitch-realtime-hub.js";
@@ -2061,7 +2062,45 @@ app.post<{
     };
   });
 
+  // ===== Poll / voting =====
+
+  app.get("/twitch/poll", async () => {
+    return { ok: true, data: twitchRuntimeContainer.pollService.getState() };
+  });
+
+  app.post<{ Body: StartPollInput }>(
+    "/twitch/poll/start",
+    async (request, reply) => {
+      try {
+        const body = request.body ?? ({} as StartPollInput);
+        const data = twitchRuntimeContainer.pollService.start({
+          title: body.title ?? "",
+          options: Array.isArray(body.options) ? body.options : [],
+          durationSec: Number(body.durationSec) || 0,
+        });
+        return { ok: true, data };
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "Не вдалося запустити";
+        reply.code(400);
+        return { ok: false, message };
+      }
+    },
+  );
+
+  app.post("/twitch/poll/stop", async () => {
+    return { ok: true, data: twitchRuntimeContainer.pollService.stop() };
+  });
+
+  app.post("/twitch/poll/clear", async () => {
+    return { ok: true, data: twitchRuntimeContainer.pollService.clear() };
+  });
+
   // ===== Public overlay endpoints (no auth — OBS browser source) =====
+
+  app.get("/public/poll", async () => {
+    return { ok: true, data: twitchRuntimeContainer.pollService.getState() };
+  });
 
   app.get("/public/song-queue", async () => {
     return {

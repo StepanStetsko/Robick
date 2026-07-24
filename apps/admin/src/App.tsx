@@ -4,6 +4,8 @@ import { AdminLayout } from "./components/layout/AdminLayout";
 import { PublicGuidePage } from "./pages/PublicGuidePage";
 import { PublicSongQueuePage } from "./pages/PublicSongQueuePage";
 import { OverlayPlayerPage } from "./pages/OverlayPlayerPage";
+import { PollOverlayPage } from "./pages/PollOverlayPage";
+import { PollPage } from "./pages/PollPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { RuntimePage } from "./pages/RuntimePage";
 import { CommandsPage } from "./pages/CommandsPage";
@@ -27,6 +29,7 @@ export default function App() {
       <Route path="/guide" element={<PublicGuidePage />} />
       <Route path="/songs" element={<PublicSongQueuePage />} />
       <Route path="/overlay/player" element={<OverlayPlayerPage />} />
+      <Route path="/overlay/poll" element={<PollOverlayPage />} />
 
       <Route
         path="/"
@@ -48,6 +51,7 @@ export default function App() {
         <Route path="guess" element={<GuessPage />} />
         <Route path="song-request" element={<SongRequestPage />} />
         <Route path="donatello" element={<DonatelloPage />} />
+        <Route path="poll" element={<PollPage />} />
         <Route path="supporter" element={<SupporterPage />} />
         <Route path="presence" element={<PresencePage />} />
         <Route path="simulation" element={<SimulationPage />} />

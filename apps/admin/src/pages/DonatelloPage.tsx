@@ -111,6 +111,21 @@ export function DonatelloPage() {
     setForm((current) => (current ? { ...current, [key]: value } : current));
   }
 
+  // The on/off switch saves immediately (so it can't be left unsaved and revert
+  // on refresh, which also left the webhook replying "disabled").
+  async function toggleEnabled(checked: boolean) {
+    setFormValue("enabled", checked);
+    setSubmitError(null);
+    try {
+      const updated = await updateDonatelloSettings({ enabled: checked });
+      setForm(settingsToForm(updated));
+      setSavedAt(new Date().toLocaleTimeString());
+    } catch (err) {
+      setFormValue("enabled", !checked); // revert on failure
+      setSubmitError(err instanceof Error ? err.message : "Не вдалося зберегти");
+    }
+  }
+
   function setMessageValue(key: keyof DonatelloMessages, value: string) {
     setForm((current) =>
       current
@@ -305,35 +320,62 @@ export function DonatelloPage() {
                     синхронізувалось).
                   </div>
                 ) : (
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Нік</th>
-                        <th>Twitch</th>
-                        <th>Рівень</th>
-                        <th>Сума</th>
-                        <th>Статус</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {subscribers.map((s) => (
-                        <tr key={s.id}>
-                          <td>{s.clientName ?? "—"}</td>
-                          <td>{s.twitchName ?? "—"}</td>
-                          <td>{s.tierName ?? "—"}</td>
-                          <td>
-                            {s.amount ?? "—"} {s.currency ?? ""}
-                          </td>
-                          <td>
-                            {s.isActive ? "активний" : "неактивний"}
-                            {s.subscriptionStatus
-                              ? ` (${s.subscriptionStatus})`
-                              : ""}
-                          </td>
+                  <div className="table-wrap">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Нік</th>
+                          <th>Twitch</th>
+                          <th>Рівень</th>
+                          <th style={{ textAlign: "right" }}>Сума</th>
+                          <th>Статус</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {subscribers.map((s) => (
+                          <tr key={s.id}>
+                            <td>
+                              <strong>{s.clientName ?? "—"}</strong>
+                            </td>
+                            <td>
+                              {s.twitchName ? (
+                                <span className="table-muted">
+                                  @{s.twitchName}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                            <td>
+                              {s.tierName ? (
+                                <span className="badge badge--warning">
+                                  {s.tierName}
+                                </span>
+                              ) : (
+                                "—"
+                              )}
+                            </td>
+                            <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                              {s.amount != null
+                                ? `${s.amount} ${s.currency ?? ""}`.trim()
+                                : "—"}
+                            </td>
+                            <td>
+                              {s.isActive ? (
+                                <span className="badge badge--success">
+                                  активний
+                                </span>
+                              ) : (
+                                <span className="badge badge--muted">
+                                  неактивний
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             ) : (
@@ -345,11 +387,16 @@ export function DonatelloPage() {
                         type="checkbox"
                         checked={form.enabled}
                         onChange={(event) =>
-                          setFormValue("enabled", event.target.checked)
+                          void toggleEnabled(event.target.checked)
                         }
                         disabled={saving}
                       />
-                      <span>Інтеграцію Donatello увімкнено</span>
+                      <span>
+                        Інтеграцію Donatello увімкнено{" "}
+                        <span style={{ opacity: 0.6 }}>
+                          (зберігається одразу)
+                        </span>
+                      </span>
                     </label>
 
                     <div className="form form--inline">
