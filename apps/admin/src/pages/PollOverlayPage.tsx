@@ -25,7 +25,6 @@ type PollState = {
 };
 
 const GOLD = "#f5c518";
-const ACCENT = "#7c5cff";
 
 async function fetchPoll(): Promise<PollState | null> {
   try {
