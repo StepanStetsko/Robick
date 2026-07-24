@@ -1,18 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { NowPlayingCard } from "../components/NowPlayingCard";
 
-// Public OBS overlay: plays the song-request queue in order via the YouTube
-// IFrame Player API, showing a minimalist "now playing" card (the player is
-// hidden, so only the audio is heard). When the queue is empty it falls back to
-// a YouTube "mix" (radio) seeded in settings — endless auto-recommended tracks —
-// and skips any track that matches the block keywords / blocklist (e.g. Russian
-// songs). Add as a Browser Source in OBS pointing at /overlay/player.
+// Public OBS overlay. Plays the song-request queue in order and, when the queue
+// is empty, a YouTube "mix" (radio) seeded in settings. Uses TWO hidden YouTube
+// players so the radio keeps its position: a request pauses the radio player
+// (never destroys it) and plays in the queue player; when the queue empties the
+// radio resumes exactly where it left off instead of reloading the mix from the
+// first track. Only one player is audible at a time. Add as a Browser Source in
+// OBS pointing at /overlay/player.
 
 const API_BASE =
   import.meta.env.VITE_API_BASE_URL?.trim() || "http://localhost:4000";
 
 const STATE_POLL_MS = 700;
 const PROGRESS_POLL_MS = 500;
+
+type Role = "radio" | "queue";
+type Mode = "queue" | "fallback" | "idle";
 
 type SongDto = {
   id: string;
@@ -52,7 +56,6 @@ type YTPlayer = {
   getCurrentTime: () => number;
   getDuration: () => number;
   getVideoData: () => VideoData;
-  getPlaylistIndex: () => number;
   destroy: () => void;
 };
 
@@ -112,15 +115,19 @@ type DisplayTrack = {
 };
 
 export function OverlayPlayerPage() {
-  const playerRef = useRef<YTPlayer | null>(null);
-  const loadedVideoId = useRef<string | null>(null);
+  const radioRef = useRef<YTPlayer | null>(null);
+  const queueRef = useRef<YTPlayer | null>(null);
+  const readyRef = useRef<{ radio: boolean; queue: boolean }>({
+    radio: false,
+    queue: false,
+  });
+  // The mix currently loaded into the radio player (loaded once; kept alive and
+  // just paused/resumed so returning to the radio continues where it left off).
   const loadedMixListId = useRef<string | null>(null);
-  // Where we were in the mix, so re-entering the fallback resumes there instead
-  // of restarting from the first track every time a request interrupts it.
-  const mixIndexRef = useRef(0);
-  const appliedPaused = useRef(false);
+  // The request video currently loaded into the queue player.
+  const loadedQueueVideoId = useRef<string | null>(null);
   const pausedRef = useRef(true);
-  const modeRef = useRef<"queue" | "fallback" | "idle">("idle");
+  const modeRef = useRef<Mode>("idle");
   const fallbackRef = useRef<FallbackConfig | null>(null);
   const reportedVideoId = useRef<string | null>(null);
   const [display, setDisplay] = useState<DisplayTrack | null>(null);
@@ -147,6 +154,20 @@ export function OverlayPlayerPage() {
     let progressTimer: ReturnType<typeof setInterval> | null = null;
     let disposed = false;
 
+    function bothReady(): boolean {
+      return readyRef.current.radio && readyRef.current.queue;
+    }
+
+    function activePlayer(): YTPlayer | null {
+      if (modeRef.current === "queue") {
+        return queueRef.current;
+      }
+      if (modeRef.current === "fallback") {
+        return radioRef.current;
+      }
+      return null;
+    }
+
     function isBlocked(data: VideoData): boolean {
       const cfg = fallbackRef.current;
       if (!cfg) {
@@ -159,14 +180,34 @@ export function OverlayPlayerPage() {
       return cfg.blockKeywords.some((kw) => kw && haystack.includes(kw));
     }
 
-    function playQueueSong(song: SongDto) {
-      // Leaving the radio for a request → advance our mix position so the next
-      // time the fallback resumes it won't replay the same track.
-      if (modeRef.current === "fallback") {
-        mixIndexRef.current += 1;
+    /** Make exactly the mode's player audible; pause the other one. */
+    function applyPlayback() {
+      const mode = modeRef.current;
+      const isPaused = pausedRef.current;
+      const radio = radioRef.current;
+      const queue = queueRef.current;
+      try {
+        if (mode === "fallback" && !isPaused) {
+          radio?.playVideo();
+        } else {
+          radio?.pauseVideo();
+        }
+      } catch {
+        // player not ready — retried on the next tick
       }
+      try {
+        if (mode === "queue" && !isPaused) {
+          queue?.playVideo();
+        } else {
+          queue?.pauseVideo();
+        }
+      } catch {
+        // player not ready — retried on the next tick
+      }
+    }
+
+    function enterQueue(song: SongDto) {
       modeRef.current = "queue";
-      loadedMixListId.current = null;
       if (reportedVideoId.current) {
         reportedVideoId.current = null;
         reportFallback(null);
@@ -177,34 +218,43 @@ export function OverlayPlayerPage() {
         requestedBy: song.requestedBy,
         fallback: false,
       });
-      if (song.videoId !== loadedVideoId.current) {
-        loadedVideoId.current = song.videoId;
-        appliedPaused.current = false; // loadVideoById autoplays
+      if (song.videoId !== loadedQueueVideoId.current) {
+        loadedQueueVideoId.current = song.videoId;
         setProgress(0);
-        playerRef.current?.loadVideoById(song.videoId);
+        try {
+          queueRef.current?.loadVideoById(song.videoId);
+        } catch {
+          // player not ready — reset so the next tick retries the load
+          loadedQueueVideoId.current = null;
+        }
       }
     }
 
-    function startFallback(mixListId: string) {
+    function enterFallback(mixListId: string) {
       modeRef.current = "fallback";
-      loadedVideoId.current = null;
+      // Next request reloads even if it's the same id we last played.
+      loadedQueueVideoId.current = null;
       if (mixListId !== loadedMixListId.current) {
         loadedMixListId.current = mixListId;
-        appliedPaused.current = false;
         setProgress(0);
-        // Resume near where the mix left off (not always the first track).
-        playerRef.current?.loadPlaylist({
-          list: mixListId,
-          listType: "playlist",
-          index: Math.max(0, mixIndexRef.current),
-        });
+        try {
+          radioRef.current?.loadPlaylist({
+            list: mixListId,
+            listType: "playlist",
+          });
+        } catch {
+          // player not ready — reset so the next tick retries the load
+          loadedMixListId.current = null;
+        }
+      }
+      // Otherwise the mix is already loaded — applyPlayback() resumes it in place.
+      if (!pausedRef.current) {
+        handleFallbackTrack();
       }
     }
 
     function goIdle() {
       modeRef.current = "idle";
-      loadedVideoId.current = null;
-      loadedMixListId.current = null;
       setProgress(0);
       setDisplay(null);
       if (reportedVideoId.current) {
@@ -213,28 +263,9 @@ export function OverlayPlayerPage() {
       }
     }
 
-    function applyPause(next: boolean) {
-      setPaused(next);
-      pausedRef.current = next;
-      const player = playerRef.current;
-      if (!player || next === appliedPaused.current) {
-        return;
-      }
-      appliedPaused.current = next;
-      try {
-        if (next) {
-          player.pauseVideo();
-        } else {
-          player.playVideo();
-        }
-      } catch {
-        // player not ready yet — the next poll will retry
-      }
-    }
-
     /** In fallback mode: skip blocked tracks, else publish the current one. */
     function handleFallbackTrack() {
-      const player = playerRef.current;
+      const player = radioRef.current;
       if (!player || modeRef.current !== "fallback") {
         return;
       }
@@ -255,15 +286,6 @@ export function OverlayPlayerPage() {
         }
         return;
       }
-      // Remember our spot in the mix so a later re-entry resumes here.
-      try {
-        const idx = player.getPlaylistIndex();
-        if (typeof idx === "number" && idx >= 0) {
-          mixIndexRef.current = idx;
-        }
-      } catch {
-        // ignore
-      }
       setDisplay({
         title: data.title ?? null,
         thumbnailUrl: `https://i.ytimg.com/vi/${data.video_id}/hqdefault.jpg`,
@@ -277,6 +299,9 @@ export function OverlayPlayerPage() {
     }
 
     async function syncState() {
+      if (!bothReady()) {
+        return;
+      }
       try {
         const state = await fetchState();
         if (!state || disposed) {
@@ -285,48 +310,85 @@ export function OverlayPlayerPage() {
         fallbackRef.current = state.fallback;
         setSkipVotes(state.skipVotes);
         setSkipNeeded(state.skipVotesNeeded);
-        applyPause(state.paused);
+        pausedRef.current = state.paused;
+        setPaused(state.paused);
 
         if (state.current) {
-          playQueueSong(state.current);
+          enterQueue(state.current);
         } else if (state.fallback.enabled && state.fallback.mixListId) {
-          // Stay in fallback mode even while paused (applyPause holds the
-          // player); only skip/report when actually playing.
-          startFallback(state.fallback.mixListId);
-          if (!state.paused) {
-            // Re-check the current mix track against an updated blocklist.
-            handleFallbackTrack();
-          }
+          enterFallback(state.fallback.mixListId);
         } else {
           goIdle();
         }
+
+        applyPlayback();
       } catch {
         // ignore — retried on the next tick
       }
     }
 
-    async function onEnded() {
-      if (modeRef.current === "fallback") {
+    async function onEnded(role: Role) {
+      if (role === "radio") {
+        if (modeRef.current !== "fallback") {
+          return;
+        }
         try {
-          playerRef.current?.nextVideo();
+          radioRef.current?.nextVideo();
         } catch {
           // ignore
         }
         return;
       }
+      // queue player finished the requested song
+      if (modeRef.current !== "queue") {
+        return;
+      }
       try {
         const next = await advance();
+        if (disposed) {
+          return;
+        }
         if (next) {
-          playQueueSong(next);
+          enterQueue(next);
+          applyPlayback();
+        } else {
+          // Queue drained — re-sync to fall back to the radio.
+          void syncState();
         }
       } catch {
         // Network blip — the state poll will recover.
       }
     }
 
+    function onPlaying(role: Role) {
+      const isPaused = pausedRef.current;
+      if (role === "radio") {
+        // Re-assert pause / silence the radio when it isn't the active source
+        // (autoplay races loadPlaylist and mode switches).
+        if (isPaused || modeRef.current !== "fallback") {
+          try {
+            radioRef.current?.pauseVideo();
+          } catch {
+            // ignore
+          }
+          return;
+        }
+        handleFallbackTrack();
+        return;
+      }
+      // queue player
+      if (isPaused || modeRef.current !== "queue") {
+        try {
+          queueRef.current?.pauseVideo();
+        } catch {
+          // ignore
+        }
+      }
+    }
+
     function pollProgress() {
-      const player = playerRef.current;
-      if (!player || modeRef.current === "idle") {
+      const player = activePlayer();
+      if (!player) {
         return;
       }
       try {
@@ -340,11 +402,11 @@ export function OverlayPlayerPage() {
       }
     }
 
-    function createPlayer() {
+    function createPlayer(elementId: string, role: Role): YTPlayer | null {
       if (!window.YT) {
-        return;
+        return null;
       }
-      playerRef.current = new window.YT.Player("yt-player", {
+      return new window.YT.Player(elementId, {
         width: "100%",
         height: "100%",
         host: "https://www.youtube.com",
@@ -356,33 +418,28 @@ export function OverlayPlayerPage() {
           origin: window.location.origin,
         },
         events: {
-          onReady: () => void syncState(),
+          onReady: () => {
+            readyRef.current[role] = true;
+            if (bothReady()) {
+              void syncState();
+            }
+          },
           onStateChange: (event: { data: number }) => {
             if (event.data === window.YT?.PlayerState.ENDED) {
-              void onEnded();
+              void onEnded(role);
               return;
             }
             if (event.data === window.YT?.PlayerState.PLAYING) {
-              // Re-assert pause (autoplay races loadVideoById/loadPlaylist).
-              if (pausedRef.current) {
-                appliedPaused.current = true;
-                try {
-                  playerRef.current?.pauseVideo();
-                } catch {
-                  // ignore
-                }
-                return;
-              }
-              handleFallbackTrack();
+              onPlaying(role);
             }
           },
           onError: (event: { data: number }) => {
             // eslint-disable-next-line no-console
-            console.error("[overlay] YouTube player error", event.data);
+            console.error(`[overlay:${role}] YouTube player error`, event.data);
             // In fallback, a bad video shouldn't stall the radio.
-            if (modeRef.current === "fallback") {
+            if (role === "radio" && modeRef.current === "fallback") {
               try {
-                playerRef.current?.nextVideo();
+                radioRef.current?.nextVideo();
               } catch {
                 // ignore
               }
@@ -392,10 +449,15 @@ export function OverlayPlayerPage() {
       });
     }
 
+    function createPlayers() {
+      radioRef.current = createPlayer("yt-radio", "radio");
+      queueRef.current = createPlayer("yt-queue", "queue");
+    }
+
     if (window.YT && window.YT.Player) {
-      createPlayer();
+      createPlayers();
     } else {
-      window.onYouTubeIframeAPIReady = createPlayer;
+      window.onYouTubeIframeAPIReady = createPlayers;
       if (!document.getElementById("yt-iframe-api")) {
         const tag = document.createElement("script");
         tag.id = "yt-iframe-api";
@@ -415,8 +477,10 @@ export function OverlayPlayerPage() {
       if (progressTimer) {
         clearInterval(progressTimer);
       }
-      playerRef.current?.destroy();
-      playerRef.current = null;
+      radioRef.current?.destroy();
+      queueRef.current?.destroy();
+      radioRef.current = null;
+      queueRef.current = null;
     };
   }, []);
 
@@ -431,7 +495,7 @@ export function OverlayPlayerPage() {
         boxSizing: "border-box",
       }}
     >
-      {/* Hidden YouTube player — kept in the DOM so the audio keeps playing. */}
+      {/* Hidden YouTube players — kept in the DOM so the audio keeps playing. */}
       <div
         style={{
           position: "absolute",
@@ -444,7 +508,8 @@ export function OverlayPlayerPage() {
           pointerEvents: "none",
         }}
       >
-        <div id="yt-player" />
+        <div id="yt-radio" />
+        <div id="yt-queue" />
       </div>
 
       <NowPlayingCard

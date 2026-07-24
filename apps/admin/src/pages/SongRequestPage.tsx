@@ -94,6 +94,7 @@ export function SongRequestPage() {
     paused: false,
     skipVotes: 0,
     skipVotesNeeded: 5,
+    fallbackEnabled: false,
     fallbackNow: null,
   });
   const [addUrl, setAddUrl] = useState("");
@@ -501,13 +502,18 @@ export function SongRequestPage() {
                       : ""}
                   </span>
                 </div>
-              ) : state.fallbackNow ? (
+              ) : state.fallbackNow || state.fallbackEnabled ? (
                 <div className="state-block">
                   <strong>
-                    📻 Радіо: {state.fallbackNow.title || state.fallbackNow.videoId}
+                    📻 Радіо:{" "}
+                    {state.fallbackNow
+                      ? state.fallbackNow.title || state.fallbackNow.videoId
+                      : "фонова музика"}
                   </strong>
                   <span className="table-muted">
-                    {state.fallbackNow.author ?? "фонова музика"}
+                    {state.fallbackNow
+                      ? state.fallbackNow.author ?? "фонова музика"
+                      : "очікує на віджет (OBS)"}
                     {state.paused ? " · ⏸ на паузі" : " · ▶ грає"}
                   </span>
                   <div className="actions" style={{ marginTop: 10 }}>
@@ -519,15 +525,17 @@ export function SongRequestPage() {
                     >
                       {state.paused ? "▶ Відновити" : "⏸ Пауза"}
                     </button>
-                    <button
-                      className="button button--danger button--small"
-                      type="button"
-                      onClick={() => void handleBanFallback()}
-                      disabled={busy}
-                      title="Заблокувати цей трек — віджет його скіпне"
-                    >
-                      🚫 Забанити трек
-                    </button>
+                    {state.fallbackNow ? (
+                      <button
+                        className="button button--danger button--small"
+                        type="button"
+                        onClick={() => void handleBanFallback()}
+                        disabled={busy}
+                        title="Заблокувати цей трек — віджет його скіпне"
+                      >
+                        🚫 Забанити трек
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               ) : (

@@ -291,6 +291,7 @@ export class SongQueueService {
       paused: this.paused,
       skipVotes: this.currentSkipVotes(playing?.id ?? null),
       skipVotesNeeded: settings.skipVotesNeeded,
+      fallbackEnabled: settings.fallbackEnabled,
       fallbackNow: playing ? null : this.fallbackNow,
     };
   }

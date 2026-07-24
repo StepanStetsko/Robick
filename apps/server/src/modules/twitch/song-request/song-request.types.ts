@@ -70,6 +70,8 @@ export type SongQueueState = {
   paused: boolean;
   skipVotes: number;
   skipVotesNeeded: number;
+  /** Whether the YouTube-mix radio fallback is enabled (drives the admin UI). */
+  fallbackEnabled: boolean;
   /** The track the overlay is playing from the mix fallback (for admin/ban). */
   fallbackNow: FallbackTrack | null;
 };

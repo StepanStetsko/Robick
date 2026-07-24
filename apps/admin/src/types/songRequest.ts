@@ -74,5 +74,6 @@ export type SongQueueState = {
   paused: boolean;
   skipVotes: number;
   skipVotesNeeded: number;
+  fallbackEnabled: boolean;
   fallbackNow: FallbackTrack | null;
 };

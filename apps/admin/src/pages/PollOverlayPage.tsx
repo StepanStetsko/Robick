@@ -10,6 +10,8 @@ const API_BASE =
 
 const POLL_MS = 600;
 const EXIT_MS = 550;
+// After a poll ends, keep the result on screen this long, then self-hide.
+const HIDE_AFTER_END_MS = 10_000;
 
 type PollOption = { label: string; votes: number };
 
@@ -41,6 +43,9 @@ export function PollOverlayPage() {
   const [visible, setVisible] = useState(false);
   const [now, setNow] = useState(Date.now());
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Once we've auto-hidden a finished poll, stay hidden until a new one starts
+  // (prevents the poll from flickering back after the 10s self-hide window).
+  const endedHiddenRef = useRef(false);
 
   // Transparent background for OBS (the admin app paints a body gradient).
   useEffect(() => {
@@ -57,23 +62,52 @@ export function PollOverlayPage() {
   useEffect(() => {
     let disposed = false;
 
+    function hideWithAnimation() {
+      setVisible(false);
+      if (clearTimer.current) {
+        clearTimeout(clearTimer.current);
+      }
+      clearTimer.current = setTimeout(() => setPoll(null), EXIT_MS);
+    }
+
     async function tick() {
       const data = await fetchPoll();
       if (disposed || !data) {
         return;
       }
-      if (data.active) {
-        if (clearTimer.current) {
-          clearTimeout(clearTimer.current);
-          clearTimer.current = null;
+
+      if (!data.active) {
+        // Poll cleared entirely (streamer removed it).
+        endedHiddenRef.current = false;
+        if (visible) {
+          hideWithAnimation();
         }
-        setPoll(data);
-        setVisible(true);
-      } else if (visible) {
-        // Play the disappear animation, then unmount.
-        setVisible(false);
-        clearTimer.current = setTimeout(() => setPoll(null), EXIT_MS);
+        return;
       }
+
+      if (data.status === "ended") {
+        const elapsed = data.endsAt ? Date.now() - data.endsAt : 0;
+        if (elapsed >= HIDE_AFTER_END_MS) {
+          // Result shown long enough — self-hide (once).
+          if (!endedHiddenRef.current) {
+            endedHiddenRef.current = true;
+            setPoll(data);
+            hideWithAnimation();
+          }
+          return;
+        }
+      } else {
+        // A running poll (re)appeared — allow future self-hide again.
+        endedHiddenRef.current = false;
+      }
+
+      // Running, or within the post-end result window: keep it on screen.
+      if (clearTimer.current) {
+        clearTimeout(clearTimer.current);
+        clearTimer.current = null;
+      }
+      setPoll(data);
+      setVisible(true);
     }
 
     const pollTimer = setInterval(() => void tick(), POLL_MS);
