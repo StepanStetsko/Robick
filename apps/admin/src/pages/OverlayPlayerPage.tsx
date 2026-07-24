@@ -160,6 +160,11 @@ export function OverlayPlayerPage() {
     }
 
     function playQueueSong(song: SongDto) {
+      // Leaving the radio for a request → advance our mix position so the next
+      // time the fallback resumes it won't replay the same track.
+      if (modeRef.current === "fallback") {
+        mixIndexRef.current += 1;
+      }
       modeRef.current = "queue";
       loadedMixListId.current = null;
       if (reportedVideoId.current) {

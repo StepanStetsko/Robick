@@ -501,6 +501,35 @@ export function SongRequestPage() {
                       : ""}
                   </span>
                 </div>
+              ) : state.fallbackNow ? (
+                <div className="state-block">
+                  <strong>
+                    📻 Радіо: {state.fallbackNow.title || state.fallbackNow.videoId}
+                  </strong>
+                  <span className="table-muted">
+                    {state.fallbackNow.author ?? "фонова музика"}
+                    {state.paused ? " · ⏸ на паузі" : " · ▶ грає"}
+                  </span>
+                  <div className="actions" style={{ marginTop: 10 }}>
+                    <button
+                      className="button button--ghost button--small"
+                      type="button"
+                      onClick={() => void runQueueAction(togglePauseSong)}
+                      disabled={busy}
+                    >
+                      {state.paused ? "▶ Відновити" : "⏸ Пауза"}
+                    </button>
+                    <button
+                      className="button button--danger button--small"
+                      type="button"
+                      onClick={() => void handleBanFallback()}
+                      disabled={busy}
+                      title="Заблокувати цей трек — віджет його скіпне"
+                    >
+                      🚫 Забанити трек
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <div className="state-block">Нічого не грає</div>
               )}
